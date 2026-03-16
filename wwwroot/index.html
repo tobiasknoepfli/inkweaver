@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inkweaver | The AI Authoring Suite</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Outfit:wght@300;500;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <nav class="sidebar">
+            <div class="logo">
+                <img src="logo.png" alt="Inkweaver Logo" class="logo-img">
+                <h1>Inkweaver</h1>
+            </div>
+            <ul class="nav-links">
+                <li class="active" data-view="editor"><span>📝</span> Writing Space</li>
+                <li data-view="outline"><span>📊</span> Outlines</li>
+                <li data-view="ingest"><span>📥</span> AI Ingest</li>
+                <li data-view="world"><span>🌍</span> World Bible</li>
+                <li data-view="persona"><span>🎭</span> Personas</li>
+                <li data-view="family"><span>🌳</span> Family Tree</li>
+                <li data-view="timeline"><span>⏳</span> Timeline</li>
+            </ul>
+            <div class="bottom-nav">
+                <div class="ai-status">
+                    <div class="status-indicator online"></div>
+                    <span>AI Ready (Gemini)</span>
+                </div>
+                <button id="settings-btn">⚙️ Settings</button>
+            </div>
+        </nav>
+
+        <!-- Main Content Area -->
+        <main class="content">
+            <header class="content-header">
+                <div class="breadcrumb">Chapter 1 / The Beginning</div>
+                <div class="actions">
+                    <button class="btn-secondary" id="export-btn" onclick="exportMarkdown()">📤 Export .MD</button>
+                    <button class="btn-secondary" id="toggle-pro-mode">💻 Pro Mode: OFF</button>
+                    <button class="btn-secondary" id="analyze-btn">🔎 Scan Plot Holes</button>
+                    <button class="btn-primary" id="ai-brainstorm">✨ AI Idea</button>
+                </div>
+            </header>
+
+            <section class="work-area">
+                <!-- Editor View (Default) -->
+                <div id="view-editor" class="view-container active">
+                    <div class="editor-container">
+                        <div class="editor-toolbar hidden" id="pro-toolbar">
+                            <button onclick="document.execCommand('bold')"><b>B</b></button>
+                            <button onclick="document.execCommand('italic')"><i>I</i></button>
+                            <button onclick="insertMarkdown('# ')">H1</button>
+                            <button onclick="insertMarkdown('## ')">H2</button>
+                            <button onclick="insertMarkdown('> ')">Quote</button>
+                        </div>
+                        <input type="text" class="title-input" placeholder="Untitled Chapter...">
+                        <div id="editor" contenteditable="true" placeholder="Start your story here..."></div>
+                        <div id="markdown-preview" class="hidden"></div>
+                    </div>
+                </div>
+
+                <!-- Outline View -->
+                <div id="view-outline" class="view-container">
+                    <div class="view-header">
+                        <h2>Story Outline</h2>
+                        <button class="btn-primary" id="add-plot-point">+ Add Plot Point</button>
+                    </div>
+                    <div class="outline-content" id="outline-list">
+                        <!-- Points go here -->
+                        <div class="empty-state">No plot points yet. Start mapping your story!</div>
+                    </div>
+                </div>
+
+                <!-- AI Ingest View -->
+                <div id="view-ingest" class="view-container">
+                    <div class="view-header">
+                        <h2>AI Story Ingest</h2>
+                    </div>
+                    <div class="ingest-space glass" style="padding: 30px; border-radius: 20px;">
+                        <p style="margin-bottom: 20px; color: var(--text-secondary);">Paste your notes, chapters, or ideas here. The AI will automatically extract characters, locations, and plot points.</p>
+                        <textarea id="ingest-text" placeholder="Paste your story text here..." style="width: 100%; height: 400px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 12px; color: white; padding: 20px; font-family: inherit; font-size: 1rem;"></textarea>
+                        <div class="header-actions" style="margin-top: 20px;">
+                            <button class="btn-primary" id="start-ingest">🚀 Process Story Data</button>
+                        </div>
+                    </div>
+                    <div id="ingest-results" style="margin-top: 30px;" class="hidden">
+                        <h3>Ingest Results</h3>
+                        <div id="ingest-summary-list"></div>
+                    </div>
+                </div>
+
+                <!-- World Bible View -->
+                <div id="view-world" class="view-container">
+                    <div class="view-header">
+                        <h2>World Bible</h2>
+                        <button class="btn-primary" id="add-lore">+ Add Lore/Location</button>
+                    </div>
+                    <div class="world-grid" id="world-list">
+                        <div class="empty-state">The world is empty. Create your locations and lore.</div>
+                    </div>
+                </div>
+
+                <!-- Personas View -->
+                <div id="view-persona" class="view-container">
+                    <div class="view-header">
+                        <h2>Character Personas</h2>
+                        <div class="header-actions">
+                            <button class="btn-secondary" id="ai-generate-character">✨ AI Generate</button>
+                            <button class="btn-primary" id="add-character">+ New Character</button>
+                        </div>
+                    </div>
+                    <div class="persona-grid" id="persona-list">
+                        <div class="empty-state">No characters yet. Bring your people to life.</div>
+                    </div>
+                </div>
+
+                <!-- Family Tree View -->
+                <div id="view-family" class="view-container">
+                    <div class="view-header">
+                        <h2>Linage & Family Trees</h2>
+                        <button class="btn-primary" id="refresh-tree">Refresh Chart</button>
+                    </div>
+                    <div id="family-tree-container" class="glass" style="padding: 40px; border-radius: 20px; overflow: auto;">
+                        <div class="empty-state">Family trees are automatically generated based on character relationships.</div>
+                    </div>
+                </div>
+
+                <!-- Timeline View -->
+                <div id="view-timeline" class="view-container">
+                    <div class="view-header">
+                        <h2>Story Timeline</h2>
+                        <button class="btn-primary" id="add-event">+ Add Event</button>
+                    </div>
+                    <div class="timeline-trail" id="timeline-list">
+                        <div class="empty-state">Time has no meaning yet. Add events to your story.</div>
+                    </div>
+                </div>
+
+                <!-- AI Sidebar (Kept persistent or togglable) -->
+                <aside class="ai-suggestions">
+                    <h3>AI Companion</h3>
+                    <div class="suggestion-list" id="suggestion-container">
+                        <div class="empty-state">
+                            <p>Highlight text or click "Scan" to see AI suggestions.</p>
+                        </div>
+                    </div>
+                </aside>
+            </section>
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <div id="settings-modal" class="modal hidden">
+        <div class="modal-content glass">
+            <h2>Settings</h2>
+            <div class="setting-group">
+                <label>AI Provider</label>
+                <select id="ai-provider">
+                    <option value="gemini">Google Gemini (Cloud/Free)</option>
+                    <option value="ollama">Ollama (Local/Privacy)</option>
+                </select>
+            </div>
+            <div class="setting-group">
+                <label>Gemini API Key</label>
+                <input type="password" id="gemini-key" placeholder="Enter your free key...">
+                <small>Get a free key at <a href="https://aistudio.google.com/" target="_blank">Google AI Studio</a></small>
+            </div>
+            <div class="setting-group">
+                <label>Ollama Model</label>
+                <input type="text" id="ollama-model" placeholder="e.g. llama3, mistral">
+                <small>Ensure Ollama is running at <code>127.0.0.1:11434</code></small>
+                <button class="btn-secondary" id="test-ollama" style="width: 100%; margin-top: 10px;">⚡ Test Connection</button>
+            </div>
+            <button class="btn-primary" id="save-settings">Save & Close</button>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
