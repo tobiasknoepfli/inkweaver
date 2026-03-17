@@ -9,12 +9,15 @@ const state = {
     worldBible: [],
     timeline: [],
     outline: [],
+    rules: [],
+    scratchpad: "",
     chapters: [{ id: 'ch1', title: 'Chapter 1', points: [] }],
     proMode: false,
     settings: {
         aiProvider: localStorage.getItem('inkweaver_ai_provider') || 'gemini',
         geminiKey: localStorage.getItem('inkweaver_gemini_key') || '',
-        ollamaModel: localStorage.getItem('inkweaver_ollama_model') || 'llama3'
+        ollamaModel: localStorage.getItem('inkweaver_ollama_model') || 'llama3',
+        projectPath: localStorage.getItem('inkweaver_project_path') || ''
     }
 };
 
@@ -66,6 +69,7 @@ function setupEventListeners() {
     document.getElementById('add-plot-point').addEventListener('click', addPlotPointToChapter);
     document.getElementById('add-chapter-btn').addEventListener('click', addChapter);
     document.getElementById('add-event').addEventListener('click', () => createObject('timeline'));
+    document.getElementById('add-rule').addEventListener('click', () => createObject('rule'));
     document.getElementById('ai-suggest-scene').addEventListener('click', aiSuggestNextScene);
 
     document.getElementById('ai-generate-character').addEventListener('click', aiGenerateCharacter);
@@ -73,6 +77,7 @@ function setupEventListeners() {
     document.getElementById('toggle-pro-mode').addEventListener('click', toggleProMode);
     document.getElementById('refresh-tree').addEventListener('click', renderFamilyTree);
     document.getElementById('start-ingest').addEventListener('click', startAIIngest);
+    document.getElementById('ai-regroup-outline').addEventListener('click', aiSmartGroupOutline);
     
     // Modals
     settingsBtn.addEventListener('click', () => {
@@ -80,6 +85,7 @@ function setupEventListeners() {
         document.getElementById('gemini-key').value = state.settings.geminiKey;
         document.getElementById('ai-provider').value = state.settings.aiProvider;
         document.getElementById('ollama-model').value = state.settings.ollamaModel;
+        refreshOllamaModels();
     });
 
     saveSettings.addEventListener('click', () => {
@@ -116,17 +122,7 @@ function setupEventListeners() {
     
     document.getElementById('consistency-btn').addEventListener('click', aiCheckConsistency);
 
-    // Zoom/Pan for Tree
-    let zoomLevel = 1;
-    document.getElementById('family-tree-container').addEventListener('wheel', (e) => {
-        if (e.ctrlKey) {
-            e.preventDefault();
-            zoomLevel += e.deltaY * -0.001;
-            zoomLevel = Math.min(Math.max(0.2, zoomLevel), 3);
-            const wrap = document.querySelector('.mermaid-wrap');
-            if (wrap) wrap.style.transform = `scale(${zoomLevel})`;
-        }
-    });
+    // Zoom/Pan logic removed as Vis-Network handles it natively
 
     // Sidebar Tabs
     document.getElementById('tab-ai').addEventListener('click', () => switchSidebarTab('ai'));
@@ -134,6 +130,55 @@ function setupEventListeners() {
 
     // Dialogue tagging
     editor.addEventListener('blur', processDialogueAttribution);
+
+    // Scratchpad sync
+    document.getElementById('scratchpad-editor').addEventListener('input', (e) => {
+        state.scratchpad = e.target.value;
+        saveAllData();
+    });
+
+    // File Interop
+    document.getElementById('select-project-btn').addEventListener('click', () => {
+        if (window.chrome?.webview) {
+            window.chrome.webview.postMessage("select_file");
+        } else {
+            alert("Native file access is only available in the Desktop Shell.");
+        }
+    });
+
+    document.getElementById('new-project-btn').addEventListener('click', () => {
+        if (window.chrome?.webview) {
+            window.chrome.webview.postMessage("new_project");
+        } else {
+            alert("Native file access is only available in the Desktop Shell.");
+        }
+    });
+
+    if (window.chrome?.webview) {
+        window.chrome.webview.addEventListener('message', handleNativeMessage);
+    }
+}
+
+function handleNativeMessage(event) {
+    const msg = event.data;
+    if (msg.type === 'file_selected') {
+        try {
+            const data = JSON.parse(msg.data);
+            applyProjectData(data);
+            state.settings.projectPath = msg.path;
+            localStorage.setItem('inkweaver_project_path', msg.path);
+            document.getElementById('current-project-path').innerText = msg.path;
+            addSuggestion("✅ Project loaded from: " + msg.path, "idea");
+        } catch (e) {
+            alert("Failed to parse project file: " + e.message);
+        }
+    } else if (msg.type === 'project_created') {
+        state.settings.projectPath = msg.path;
+        localStorage.setItem('inkweaver_project_path', msg.path);
+        document.getElementById('current-project-path').innerText = msg.path;
+        saveAllData();
+        addSuggestion("🆕 New project created at: " + msg.path, "idea");
+    }
 }
 
 function switchSidebarTab(tab) {
@@ -229,30 +274,49 @@ function switchView(viewId) {
 
 // Data Handling
 function saveAllData() {
-    localStorage.setItem('inkweaver_full_state', JSON.stringify({
+    const fullData = {
         currentDraft: state.currentDraft,
         personas: state.personas,
         worldBible: state.worldBible,
         timeline: state.timeline,
-        outline: state.outline
-    }));
+        chapters: state.chapters,
+        rules: state.rules,
+        scratchpad: state.scratchpad
+    };
+
+    localStorage.setItem('inkweaver_full_state', JSON.stringify(fullData));
+
+    // Also save to native file if linked
+    if (state.settings.projectPath && window.chrome?.webview) {
+        window.chrome.webview.postMessage(`save_file|${state.settings.projectPath}|${JSON.stringify(fullData)}`);
+    }
 }
 
 function loadAllData() {
+    if (state.settings.projectPath) {
+        document.getElementById('current-project-path').innerText = state.settings.projectPath;
+    }
+
     const saved = localStorage.getItem('inkweaver_full_state');
     if (saved) {
-        const data = JSON.parse(saved);
-        state.currentDraft = data.currentDraft || { title: "", content: "" };
-        state.personas = data.personas || [];
-        state.worldBible = data.worldBible || [];
-        state.timeline = data.timeline || [];
-        state.outline = data.outline || [];
-        state.chapters = data.chapters || [{ id: 'ch1', title: 'Chapter 1', points: [] }];
-
-        // Apply to UI
-        editor.innerHTML = state.currentDraft.content || "";
-        titleInput.value = state.currentDraft.title || "";
+        applyProjectData(JSON.parse(saved));
     }
+}
+
+function applyProjectData(data) {
+    state.currentDraft = data.currentDraft || { title: "", content: "" };
+    state.personas = data.personas || [];
+    state.worldBible = data.worldBible || [];
+    state.timeline = data.timeline || [];
+    state.chapters = data.chapters || [{ id: 'ch1', title: 'Chapter 1', points: [] }];
+    state.rules = data.rules || [];
+    state.scratchpad = data.scratchpad || "";
+
+    // Apply to UI
+    editor.innerHTML = state.currentDraft.content || "";
+    titleInput.value = state.currentDraft.title || "";
+    document.getElementById('scratchpad-editor').value = state.scratchpad;
+    renderAllViews();
 }
 
 // Object Creation
@@ -281,6 +345,11 @@ function createObject(type) {
             state.timeline.push(newObj);
             renderTimeline();
             break;
+        case 'rule':
+            newObj = { ...newObj, name: "New Rule", interpretation: "1 year in heaven = 7 earth years", category: "Physics" };
+            state.rules.push(newObj);
+            renderRules();
+            break;
     }
     saveAllData();
 }
@@ -291,6 +360,7 @@ function renderAllViews() {
     renderWorld();
     renderOutline();
     renderTimeline();
+    renderRules();
     updateAIStatus();
 }
 
@@ -327,81 +397,201 @@ function renderWorld() {
     `).join('');
 }
 
+let treeNetwork = null;
+
 function renderFamilyTree() {
     const container = document.getElementById('family-tree-container');
-    if (state.personas.length === 0) {
-        container.innerHTML = '<div class="empty-state">No characters yet.</div>';
+    
+    // 1. Filter: Only show people with at least one connection
+    const personasWithLinks = state.personas.filter(p => {
+        const hasParent = (p.parents && p.parents.length > 0) || p.parent;
+        const hasSpouse = p.spouse && p.spouse.trim() !== "";
+        const hasChildren = state.personas.some(child => 
+            (child.parents && child.parents.some(pn => pn.toLowerCase() === p.name.toLowerCase())) ||
+            (child.parent && child.parent.toLowerCase() === p.name.toLowerCase())
+        );
+        const hasRelationships = p.relationships && p.relationships.length > 0;
+        return hasParent || hasSpouse || hasChildren || hasRelationships;
+    });
+
+    if (personasWithLinks.length === 0) {
+        container.innerHTML = '<div class="empty-state">No connected characters yet. Add family members (Parents/Spouse) or relationships to see the tree. </div>';
         return;
     }
 
-    // Configure Mermaid for a nicer wide layout
-    mermaid.initialize({ 
-        startOnLoad: false, 
-        theme: 'dark',
-        flowchart: { useMaxWidth: false, htmlLabels: true, curve: 'basis' },
-        securityLevel: 'loose'
-    });
+    // 2. Clear container and create board structure
+    container.innerHTML = `
+        <div class="tree-legend" style="position: absolute; top: 20px; right: 20px; z-index: 10; background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(10px);">
+            <div class="legend-item"><span class="line solid" style="background:#475569"></span> Lineage</div>
+            <div class="legend-item"><span class="line dotted" style="border-top:2px dotted #fbbf24"></span> Spouse</div>
+            <div class="legend-item"><span class="line dotted" style="border-top:2px dashed #ffffff"></span> Romance/Affair/ONS</div>
+            <div class="legend-item"><span class="line thick" style="background:#10b981"></span> Ally/Friend</div>
+            <div class="legend-item"><span class="line dash-arrow" style="border-top:2px dashed #ef4444"></span> Hostile/Enemy</div>
+        </div>
+        <div id="vis-network-container" class="tree-grid-bg" style="width: 100%; height: 800px; cursor: grab;"></div>
+    `;
 
-    let graph = 'graph LR\n'; // Left-to-Right layout is usually better for wide trees
-    
-    // Nodes
-    state.personas.forEach((p, index) => {
-        const nodeId = `char_${index}`;
-        const cleanName = p.name.replace(/[^a-zA-Z0-9]/g, '_'); // Very safe ID
-        graph += `  ${nodeId}["${p.name}"]\n`;
-    });
-
-    // Relationships
-    state.personas.forEach((p, index) => {
-        const nodeId = `char_${index}`;
+    const nodesArray = personasWithLinks.map(p => {
+        const isLead = p.role?.toLowerCase().includes("pro") || p.role?.toLowerCase().includes("lead");
         
-        // Parents (Solid lines - Supporting Multiple)
-        const parentsList = p.parents || (p.parent ? [p.parent] : []);
-        parentsList.forEach(parentName => {
-            const cleanParentName = parentName.trim().toLowerCase();
-            const parentIdx = state.personas.findIndex(x => x.name.toLowerCase() === cleanParentName);
-            if (parentIdx !== -1) {
-                graph += `  char_${parentIdx} --> ${nodeId}\n`;
+        // Auto-position if no coordinates exist (start from center)
+        const x = p.treeX !== undefined ? p.treeX : (Math.random() * 200 - 100);
+        const y = p.treeY !== undefined ? p.treeY : (Math.random() * 200 - 100);
+
+        let label = `<b>${p.name}</b>`;
+        if (p.role) label += `\n<i>${p.role}</i>`;
+        if (p.location) label += `\n<small>📍 ${p.location}</small>`;
+
+        return {
+            id: p.id,
+            label: label,
+            shape: 'box',
+            x: x,
+            y: y,
+            font: { 
+                multi: 'html', 
+                color: '#ffffff', 
+                size: 14,
+                face: 'Inter',
+                bold: { color: '#ffffff', size: 16 },
+                ital: { color: '#94a3b8', size: 12 }
+            },
+            color: {
+                background: isLead ? '#6366f1' : '#1e293b',
+                border: isLead ? '#818cf8' : '#475569',
+                highlight: { background: '#4f46e5', border: '#818cf8' }
+            },
+            borderWidth: isLead ? 3 : 1,
+            shadow: { enabled: true, color: 'rgba(0,0,0,0.5)', size: 10, x: 5, y: 5 },
+            margin: 15
+        };
+    });
+
+    const edgesArray = [];
+    personasWithLinks.forEach(p => {
+        const parents = p.parents || (p.parent ? [p.parent] : []);
+        parents.forEach(parentName => {
+            const parent = personasWithLinks.find(x => x.name.toLowerCase() === parentName.trim().toLowerCase());
+            if (parent) {
+                edgesArray.push({
+                    from: parent.id,
+                    to: p.id,
+                    arrows: 'to',
+                    width: 3,
+                    color: { color: '#475569', opacity: 0.8 },
+                    smooth: false // STRAIGHT LINES
+                });
             }
         });
-        
-        // Spouses (Dotted lines for relationships)
+
         if (p.spouse) {
-            const spouseName = p.spouse.trim().toLowerCase();
-            const spouseIdx = state.personas.findIndex(x => x.name.toLowerCase() === spouseName);
-            if (spouseIdx !== -1 && spouseIdx > index) {
-                graph += `  char_${spouseIdx} --- ${nodeId}\n`; // Use 3 dashes for a link without arrow
+            const spouse = personasWithLinks.find(x => x.name.toLowerCase() === p.spouse.trim().toLowerCase());
+            if (spouse && spouse.id > p.id) {
+                edgesArray.push({
+                    from: p.id,
+                    to: spouse.id,
+                    dashes: true,
+                    width: 4,
+                    color: { color: '#fbbf24', opacity: 0.8 },
+                    label: 'spouse',
+                    font: { size: 10, color: '#fbbf24', align: 'middle' },
+                    smooth: false // STRAIGHT LINES
+                });
             }
         }
 
-        // Relationships (Heatmap)
         if (p.relationships) {
             p.relationships.forEach(rel => {
-                const targetIdx = state.personas.findIndex(x => x.name.toLowerCase() === rel.target.toLowerCase());
-                if (targetIdx !== -1 && targetIdx > index) {
+                const target = personasWithLinks.find(x => x.name.toLowerCase() === rel.target.toLowerCase());
+                if (target && target.id > p.id) {
                     const type = rel.type.toLowerCase();
-                    let style = "---";
-                    if (type.includes("enemy") || type.includes("rival")) style = "-. enemy .->";
-                    else if (type.includes("friend") || type.includes("ally")) style = "== friend ==>";
-                    graph += `  char_${index} ${style} char_${targetIdx}\n`;
+                    let edgeColor = '#94a3b8'; // default gray
+                    let edgeWidth = 3;
+                    let dashed = false;
+
+                    const hostileKeywords = ['enemy', 'foe', 'hates', 'hated', 'rival', 'hostile', 'conflict', 'opponent'];
+                    const romanticKeywords = ['affair', 'ons', 'one night', 'relation', 'boyfriend', 'girlfriend', 'lover', 'loves', 'dating', 'romance'];
+                    const friendlyKeywords = ['friend', 'ally', 'allied', 'loyal', 'assistant', 'mentor', 'disciple'];
+
+                    if (hostileKeywords.some(k => type.includes(k))) {
+                        edgeColor = '#ef4444';
+                        edgeWidth = 4;
+                        dashed = [5, 5];
+                    } else if (friendlyKeywords.some(k => type.includes(k))) {
+                        edgeColor = '#10b981';
+                        edgeWidth = 4;
+                    } else if (romanticKeywords.some(k => type.includes(k))) {
+                        edgeColor = '#ffffff'; // White for romantic/spicy relations
+                        dashed = [10, 5];
+                        edgeWidth = 4;
+                    }
+
+                    edgesArray.push({ 
+                        from: p.id, 
+                        to: target.id, 
+                        width: edgeWidth, 
+                        color: edgeColor, 
+                        dashes: dashed, 
+                        label: rel.type, 
+                        font: { color: edgeColor, strokeWidth: 0, size: 11 },
+                        smooth: false // STRAIGHT LINES
+                    });
                 }
             });
         }
     });
 
-    // Custom Styles for Heatmap
-    graph += `  linkStyle default stroke:#475569,stroke-width:1px;\n`;
-    // We can't easily target specific link indices here without more complex logic, but Mermaid will auto-render the link types.
-
-    // Clear and Redraw
-    container.innerHTML = `<div class="mermaid-wrap" style="transform-origin: 0 0; transition: transform 0.2s;"><pre class="mermaid">${graph}</pre></div>`;
+    const nodes = new vis.DataSet(nodesArray);
+    const edges = new vis.DataSet(edgesArray);
+    const visContainer = document.getElementById('vis-network-container');
+    const data = { nodes, edges };
     
-    try {
-        mermaid.init(undefined, container.querySelectorAll('.mermaid'));
-    } catch (err) {
-        console.error(err);
-        container.innerHTML += `<div class="error">Graph rendering issue.</div>`;
-    }
+    const options = {
+        physics: { enabled: false },
+        interaction: {
+            dragNodes: true,
+            dragView: true,
+            zoomView: true,
+            hover: true
+        },
+        edges: {
+            smooth: false // GLOBAL STRAIGHT LINES
+        }
+    };
+
+    treeNetwork = new vis.Network(visContainer, data, options);
+
+    // SNAP TO GRID Logic
+    const GRID_SIZE = 50;
+    treeNetwork.on("dragEnd", function (params) {
+        if (params.nodes.length > 0) {
+            const nodeId = params.nodes[0];
+            const nodePos = treeNetwork.getPositions([nodeId])[nodeId];
+            
+            // Calculate grid snap
+            const snappedX = Math.round(nodePos.x / GRID_SIZE) * GRID_SIZE;
+            const snappedY = Math.round(nodePos.y / GRID_SIZE) * GRID_SIZE;
+            
+            // Move node to grid
+            nodes.update({ id: nodeId, x: snappedX, y: snappedY });
+            
+            // Save position to state
+            const targetChar = state.personas.find(p => p.id === nodeId);
+            if (targetChar) {
+                targetChar.treeX = snappedX;
+                targetChar.treeY = snappedY;
+                saveAllData(); 
+            }
+        }
+    });
+
+    treeNetwork.on("doubleClick", function (params) {
+        if (params.nodes.length > 0) editPersona(params.nodes[0]);
+    });
+
+    document.getElementById('reset-tree-view').addEventListener('click', () => {
+        treeNetwork.fit();
+    });
 }
 
 function renderOutline() {
@@ -416,9 +606,12 @@ function renderOutline() {
             </div>
             <div class="plot-points-container" ondrop="drop(event, '${ch.id}')" ondragover="allowDrop(event)">
                 ${ch.points.length === 0 ? '<div class="empty-drop">Drop points here...</div>' : ch.points.map((p, pIdx) => `
-                    <div class="plot-point sortable" draggable="true" ondragstart="drag(event, '${ch.id}', ${pIdx})">
-                        <div class="point-content" contenteditable="true" onblur="updatePlotPointContent('${ch.id}', ${pIdx}, this.innerText)">${p.content}</div>
-                        <div style="display: flex; gap: 5px;">
+                    <div class="plot-point sortable ${p.isContradiction ? 'contradiction' : ''}" draggable="true" ondragstart="drag(event, '${ch.id}', ${pIdx})">
+                        <div class="point-content">
+                            <div contenteditable="true" onblur="updatePlotPointContent('${ch.id}', ${pIdx}, this.innerText)">${p.content}</div>
+                            ${p.isContradiction ? `<div class="contradiction-note">⚠️ ${p.contradictionNote}</div>` : ''}
+                        </div>
+                        <div style="display: flex; gap: 5px; align-items: center;">
                             <button onclick="aiDraftScene('${ch.id}', ${pIdx})" class="btn-mini" title="Draft Prose">✍️</button>
                             <button onclick="deletePlotPoint('${ch.id}', ${pIdx})" class="btn-mini">×</button>
                         </div>
@@ -514,6 +707,67 @@ window.addSceneFromAI = (txt) => {
     renderOutline();
 };
 
+async function aiSmartGroupOutline() {
+    addSuggestion("🧠 Re-organizing outline and checking for plot holes...", "loading");
+    
+    try {
+        const context = getProjectContext();
+        const currentOutline = state.chapters.map(ch => ({
+            title: ch.title,
+            points: ch.points.map(p => p.content)
+        }));
+
+        const prompt = `
+            ${context}
+            
+            CURRENT OUTLINE:
+            ${JSON.stringify(currentOutline, null, 2)}
+            
+            TASK:
+            1. Group logically connected plot points into sensible chapters.
+            2. Sort these chapters and points into a clear chronological narrative.
+            3. Identify any points that CONTRADICT the characters' motivations, traits, previous events, OR the established WORLD RULES (e.g. time dilation, magic limits, etc).
+            
+            Return ONLY a JSON object:
+            {
+              "chapters": [
+                {
+                  "title": "Chapter Title",
+                  "points": [
+                    {
+                      "content": "Scene description",
+                      "isContradiction": false,
+                      "contradictionNote": "Why it contradicts (if applicable)"
+                    }
+                  ]
+                }
+              ]
+            }
+        `;
+
+        const responseText = await callAI(prompt);
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+            const data = JSON.parse(jsonMatch[0]);
+            
+            if (confirm("The AI has suggested a new structure for your outline. Apply changes?")) {
+                state.chapters = data.chapters.map(ch => ({
+                    id: 'ch_' + Date.now() + Math.random(),
+                    title: ch.title,
+                    points: ch.points
+                }));
+                saveAllData();
+                renderOutline();
+                addSuggestion("Outline re-organized and checked for consistency.", "idea");
+            }
+        }
+        removeLoading();
+    } catch (err) {
+        removeLoading();
+        addSuggestion("Re-grouping failed: " + err.message, "error");
+    }
+}
+
 async function aiDraftScene(chId, pIdx) {
     const ch = state.chapters.find(c => c.id === chId);
     const point = ch.points[pIdx];
@@ -607,6 +861,22 @@ function renderTimeline() {
     `).join('');
 }
 
+function renderRules() {
+    const container = document.getElementById('rules-list');
+    if (state.rules.length === 0) {
+        container.innerHTML = '<div class="empty-state">No rules defined. Set the laws of your universe.</div>';
+        return;
+    }
+    container.innerHTML = state.rules.map(r => `
+        <div class="persona-card" onclick="editRule(${r.id})">
+            <div class="persona-avatar">📜</div>
+            <div class="persona-name">${r.name}</div>
+            <div class="persona-role" style="color: var(--accent-blue)">${r.category}</div>
+            <p style="font-size: 0.8rem; color: #94a3b8; margin-top: 10px;">${r.interpretation}</p>
+        </div>
+    `).join('');
+}
+
 // Editing System
 let currentEditingItem = null;
 let currentEditingType = null;
@@ -621,6 +891,7 @@ function editPersona(id) {
     document.getElementById('edit-modal').classList.remove('hidden');
     document.getElementById('edit-modal-title').innerText = "Edit Character: " + p.name;
     document.getElementById('persona-fields').classList.remove('hidden');
+    document.getElementById('steckbrief-section').classList.remove('hidden');
     document.getElementById('edit-desc-label').innerText = "Biography";
     
     document.getElementById('edit-name').value = p.name || "";
@@ -638,6 +909,7 @@ function editPersona(id) {
     document.getElementById('edit-goal').value = p.goal || "";
     document.getElementById('edit-conflict').value = p.conflict || "";
     document.getElementById('edit-relationships').value = p.relationships ? p.relationships.map(r => `${r.target}: ${r.type}`).join(', ') : "";
+    document.getElementById('edit-location').value = p.location || "";
 }
 
 function editWorld(id) {
@@ -650,6 +922,7 @@ function editWorld(id) {
     document.getElementById('edit-modal').classList.remove('hidden');
     document.getElementById('edit-modal-title').innerText = "Edit Lore: " + w.name;
     document.getElementById('persona-fields').classList.add('hidden');
+    document.getElementById('steckbrief-section').classList.add('hidden');
     document.getElementById('edit-desc-label').innerText = "Description";
     
     document.getElementById('edit-name').value = w.name || "";
@@ -661,6 +934,24 @@ function editWorld(id) {
     document.getElementById('edit-flaws').value = "";
     document.getElementById('edit-history').value = "";
     document.getElementById('edit-parent').value = "";
+}
+
+function editRule(id) {
+    const r = state.rules.find(item => item.id === id);
+    if (!r) return;
+
+    currentEditingItem = r;
+    currentEditingType = 'rule';
+
+    document.getElementById('edit-modal').classList.remove('hidden');
+    document.getElementById('edit-modal-title').innerText = "Edit Rule: " + r.name;
+    document.getElementById('persona-fields').classList.add('hidden');
+    document.getElementById('steckbrief-section').classList.add('hidden');
+    document.getElementById('edit-desc-label').innerText = "Interpretation";
+
+    document.getElementById('edit-name').value = r.name || "";
+    document.getElementById('edit-role').value = r.category || ""; // Re-use role field for category
+    document.getElementById('edit-description').value = r.interpretation || "";
 }
 
 function saveEdit() {
@@ -688,9 +979,28 @@ function saveEdit() {
         const relStr = document.getElementById('edit-relationships').value;
         currentEditingItem.relationships = relStr.split(',').map(r => {
             const parts = r.split(':');
-            if (parts.length === 2) return { target: parts[0].trim(), type: parts[1].trim() };
+            if (parts.length === 2) {
+                const p1 = parts[0].trim();
+                const p2 = parts[1].trim();
+                
+                // Smart Detection: check if either part matches an existing character name (partial match included)
+                const p1Match = state.personas.find(p => p.name.toLowerCase() === p1.toLowerCase() || p.name.toLowerCase().startsWith(p1.toLowerCase()));
+                const p2Match = state.personas.find(p => p.name.toLowerCase() === p2.toLowerCase() || p.name.toLowerCase().startsWith(p2.toLowerCase()));
+
+                if (p2Match && !p1Match) {
+                    return { target: p2Match.name, type: p1 };
+                }
+                // Default to p1 as target, but use the full name if a match was found
+                return { target: p1Match ? p1Match.name : p1, type: p2 };
+            }
             return null;
         }).filter(r => r);
+        currentEditingItem.location = document.getElementById('edit-location').value;
+    }
+
+    if (currentEditingType === 'rule') {
+        currentEditingItem.category = document.getElementById('edit-role').value;
+        currentEditingItem.interpretation = document.getElementById('edit-description').value;
     }
 
     saveAllData();
@@ -704,6 +1014,8 @@ function deleteCurrentItem() {
     
     if (currentEditingType === 'persona') {
         state.personas = state.personas.filter(p => p.id !== currentEditingItem.id);
+    } else if (currentEditingType === 'rule') {
+        state.rules = state.rules.filter(r => r.id !== currentEditingItem.id);
     } else {
         state.worldBible = state.worldBible.filter(w => w.id !== currentEditingItem.id);
     }
@@ -780,6 +1092,14 @@ function getProjectContext() {
         context += `- ${t.date}: ${t.event}\n`;
     });
     
+    context += "\nWORLD RULES:\n";
+    state.rules.forEach(r => {
+        context += `- Rule: ${r.name}. Interpretation: ${r.interpretation} (Category: ${r.category})\n`;
+    });
+
+    context += "\nSCRATCHPAD / NOTES / LAWS:\n";
+    context += state.scratchpad + "\n";
+
     return context;
 }
 async function aiGenerateCharacter() {
@@ -911,6 +1231,37 @@ async function callOllama(prompt) {
     }
 }
 
+async function refreshOllamaModels() {
+    const btn = document.getElementById('refresh-models-btn');
+    const select = document.getElementById('ollama-model-select');
+    btn.innerText = "⏳";
+
+    try {
+        const response = await fetch("http://127.0.0.1:11434/api/tags");
+        if (!response.ok) throw new Error("Ollama not responding");
+        const data = await response.json();
+        
+        select.innerHTML = '<option value="">Select a model...</option>';
+        data.models.forEach(m => {
+            const opt = document.createElement('option');
+            opt.value = m.name;
+            opt.innerText = m.name;
+            select.appendChild(opt);
+        });
+
+        if (state.settings.ollamaModel) {
+            select.value = state.settings.ollamaModel;
+        }
+        
+        addSuggestion("✅ Ollama models refreshed.", "idea");
+    } catch (err) {
+        addSuggestion("❌ Could not fetch Ollama models. Ensure it is running and CORS is enabled.", "error");
+        console.error(err);
+    } finally {
+        btn.innerText = "🔄";
+    }
+}
+
 async function testOllamaConnection() {
     const btn = document.getElementById('test-ollama');
     const originalText = btn.innerText;
@@ -1035,20 +1386,27 @@ async function startAIIngest() {
     addSuggestion("🧠 AI is deep-diving, mapping family structures, and suggesting chapters...", "loading");
 
     const prompt = `
-        Analyze the following story text. 
-        1. Extract characters: Include FULL family mapping (who is whose parent/child/spouse).
-        2. Extract locations.
-        3. Suggest a chapter structure.
-        
+        Analyze the following story text (ideas, notes, or draft).
+
+        TASK:
+        1. Extract and Group: Organize these thoughts into characters, locations, and a chronological story outline.
+        2. Identify Contradictions: Find any plot holes or logic gaps in the provided text.
+        3. Fill the Gaps: Suggest new ideas to make the story more sensible and complete.
+
         Return ONLY a JSON object:
         {
           "characters": [{"name": "Name", "role": "Role", "traits": ["Trait1"], "bio": "Bio", "parent": "ParentName", "spouse": "SpouseName", "goal": "Goal", "conflict": "Conflict"}],
           "locations": [{"name": "Name", "description": "Description"}],
-          "chapters": [{"title": "Chapter Name", "points": [{"content": "Scene beat"}]}]
+          "chapters": [{"title": "Chapter Name", "points": [{"content": "Scene beat", "isIdea": false}]}],
+          "contradictions": [{"description": "Contradiction description", "impact": "minor/major"}],
+          "suggestions": [{"content": "New idea to bridge a gap", "reason": "Why this was added"}]
         }
-        
-        IMPORTANT: In the "parent" and "spouse" fields, use names from THIS extracted list if they are mentioned together.
-        
+
+        IMPORTANT: 
+        - The "chapters" should represent a sorted, sensible chronological story outline.
+        - In the chapter "points", set "isIdea" to TRUE if the point is a suggested AI addition, and FALSE if it's based on existing text.
+        - Use "contradictions" to highlight plot holes.
+
         Text to analyze:
         ${text}
     `;
@@ -1089,14 +1447,33 @@ function renderStagingArea(data) {
         });
     }
 
+    if (data.contradictions?.length) {
+        html += `<h4>Plot Holes & Contradictions</h4>`;
+        data.contradictions.forEach((c, i) => {
+            html += `<div class="staging-contradiction"><b>[${c.impact.toUpperCase()}]</b> ${c.description}</div>`;
+        });
+    }
+
+    if (data.suggestions?.length) {
+        html += `<h4>Brainstorming Suggestions</h4>`;
+        data.suggestions.forEach((s, i) => {
+            html += `<label class="staging-item staging-suggestion"><input type="checkbox" checked data-type="suggestion" data-idx="${i}"> <b>IDEA:</b> ${s.content}<br><small style="opacity: 0.7;">${s.reason}</small></label>`;
+        });
+    }
+
     if (data.chapters?.length) {
-        html += `<h4>Suggested Chapters</h4>`;
+        html += `<h4>Sorted Story Outline</h4>`;
         data.chapters.forEach((ch, i) => {
             html += `
                 <div class="staging-chapter">
                     <label><input type="checkbox" checked data-type="chapter" data-idx="${i}"> <b>${ch.title}</b></label>
                     <div style="margin-left: 20px; font-size: 0.8rem; color: var(--text-secondary);">
-                        ${ch.points.map(p => `• ${p.content}`).join('<br>')}
+                        ${ch.points.map(p => `
+                            <div>
+                                ${p.isIdea ? '<span style="color: #a855f7; font-weight: bold;">[IDEA]</span>' : '•'} 
+                                ${p.content}
+                            </div>
+                        `).join('')}
                     </div>
                 </div>`;
         });
@@ -1124,9 +1501,29 @@ function confirmIngest() {
             state.worldBible.push({ id: Date.now() + Math.random(), ...l });
         } else if (type === 'chapter') {
             const ch = stagedIngestData.chapters[idx];
-            state.chapters.push({ id: 'ch_' + Date.now() + Math.random(), ...ch });
+            // Mark ideas when importing to the actual state
+            const processedPoints = ch.points.map(p => ({
+                ...p,
+                content: p.isIdea ? `✨ [IDEA] ${p.content}` : p.content
+            }));
+            state.chapters.push({ id: 'ch_' + Date.now() + Math.random(), title: ch.title, points: processedPoints });
+        } else if (type === 'suggestion') {
+            const s = stagedIngestData.suggestions[idx];
+            let brainstormCh = state.chapters.find(c => c.title === "AI Brainstorming");
+            if (!brainstormCh) {
+                brainstormCh = { id: 'ch_brainstorm_' + Date.now(), title: "AI Brainstorming", points: [] };
+                state.chapters.push(brainstormCh);
+            }
+            brainstormCh.points.push({ content: `✨ [IDEA] ${s.content}`, isIdea: true });
         }
     });
+
+    // Handle contradictions by posting them to the suggestion container as warnings
+    if (stagedIngestData.contradictions?.length) {
+        stagedIngestData.contradictions.forEach(c => {
+            addSuggestion(`⚠️ <b>Contradiction:</b> ${c.description}`, "error");
+        });
+    }
 
     saveAllData();
     renderAllViews();
@@ -1154,7 +1551,7 @@ async function aiCheckConsistency() {
             Current Draft Section: "${storyText}"
             
             TASK: Act as a continuity and character arc editor. 
-            1. Check for contradictions in traits or lore.
+            1. Check for contradictions in traits, lore, OR World Rules (especially time/distance calculations).
             2. Evaluate Character Progression: Are characters moving toward their listed GOALS? Are they facing their CONFLICTS?
             3. Archetype Check: Is the character behavior consistent with their established role?
             

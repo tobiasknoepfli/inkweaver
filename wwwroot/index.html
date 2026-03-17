@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
 </head>
 <body>
     <div class="app-container">
@@ -28,6 +29,8 @@
                 <li data-view="persona"><span>🎭</span> Personas</li>
                 <li data-view="family"><span>🌳</span> Family Tree</li>
                 <li data-view="timeline"><span>⏳</span> Timeline</li>
+                <li data-view="rules"><span>📜</span> World Rules</li>
+                <li data-view="scratchpad"><span>🗒️</span> Notations</li>
             </ul>
             <div class="bottom-nav">
                 <div class="ai-status">
@@ -75,6 +78,7 @@
                     <div class="view-header">
                         <h2>Story Outline</h2>
                         <div class="header-actions">
+                            <button class="btn-secondary" id="ai-regroup-outline" style="background: var(--accent-blue); color: white;">✨ Re-group & Check</button>
                             <button class="btn-secondary" id="ai-suggest-scene">🔮 AI Suggest Next Scene</button>
                             <button class="btn-primary" id="add-chapter-btn">+ Add Chapter</button>
                             <button class="btn-primary" id="add-plot-point">+ Add Plot Point</button>
@@ -139,9 +143,12 @@
                 <div id="view-family" class="view-container">
                     <div class="view-header">
                         <h2>Linage & Family Trees</h2>
-                        <button class="btn-primary" id="refresh-tree">Refresh Chart</button>
+                        <div class="header-actions">
+                            <button class="btn-secondary" id="reset-tree-view">🎯 Reset View</button>
+                            <button class="btn-primary" id="refresh-tree">Refresh Chart</button>
+                        </div>
                     </div>
-                    <div id="family-tree-container" class="glass" style="padding: 40px; border-radius: 20px; overflow: auto;">
+                    <div id="family-tree-container" class="glass">
                         <div class="empty-state">Family trees are automatically generated based on character relationships.</div>
                     </div>
                 </div>
@@ -154,6 +161,27 @@
                     </div>
                     <div class="timeline-trail" id="timeline-list">
                         <div class="empty-state">Time has no meaning yet. Add events to your story.</div>
+                    </div>
+                </div>
+
+                <!-- World Rules View -->
+                <div id="view-rules" class="view-container">
+                    <div class="view-header">
+                        <h2>World Rules & Mechanics</h2>
+                        <button class="btn-primary" id="add-rule">+ Add New Rule</button>
+                    </div>
+                    <div class="rules-grid" id="rules-list">
+                        <div class="empty-state">No rules defined. Set the laws of your universe.</div>
+                    </div>
+                </div>
+
+                <!-- Notations (Scratchpad) View -->
+                <div id="view-scratchpad" class="view-container">
+                    <div class="view-header">
+                        <h2>Notations & Scratchpad</h2>
+                    </div>
+                    <div class="scratchpad-area glass" style="flex-grow: 1; display: flex; flex-direction: column; overflow: hidden; border-radius: 20px;">
+                        <textarea id="scratchpad-editor" placeholder="Write down your laws, commandments, or random thoughts here..." style="flex-grow: 1; width: 100%; border: none; background: transparent; color: white; padding: 40px; font-family: 'Fira Code', monospace; line-height: 1.6; font-size: 1.1rem; resize: none; outline: none;"></textarea>
                     </div>
                 </div>
 
@@ -182,31 +210,57 @@
     <div id="settings-modal" class="modal hidden">
         <div class="modal-content glass">
             <h2>Settings</h2>
-            <div class="setting-group">
-                <label>AI Provider</label>
-                <select id="ai-provider">
-                    <option value="gemini">Google Gemini (Cloud/Free)</option>
-                    <option value="ollama">Ollama (Local/Privacy)</option>
-                </select>
-            </div>
-            <div class="setting-group">
-                <label>Gemini API Key</label>
-                <input type="password" id="gemini-key" placeholder="Enter your free key...">
-                <small>Get a free key at <a href="https://aistudio.google.com/" target="_blank">Google AI Studio</a></small>
-            </div>
-            <div class="setting-group">
-                <label>Ollama Model</label>
-                <div style="display: flex; gap: 10px;">
-                    <select id="ollama-model-select" style="flex-grow: 1; background: rgba(0,0,0,0.3); color: white; border: 1px solid var(--border-color); border-radius: 8px; padding: 10px;">
-                        <option value="">Fetch models...</option>
+            <div class="edit-form">
+                <div class="setting-group">
+                    <label>AI Provider</label>
+                    <select id="ai-provider">
+                        <option value="gemini">Google Gemini (Cloud/Free)</option>
+                        <option value="ollama">Ollama (Local/Privacy)</option>
                     </select>
-                    <button class="btn-secondary" id="refresh-models-btn" title="Refresh local models">🔄</button>
                 </div>
-                <input type="text" id="ollama-model" placeholder="Or type manually..." style="margin-top: 10px;">
-                <small>Ensure Ollama is running at <code>127.0.0.1:11434</code></small>
-                <button class="btn-secondary" id="test-ollama" style="width: 100%; margin-top: 10px;">⚡ Test Connection</button>
+                <div class="setting-group">
+                    <label>Gemini API Key</label>
+                    <input type="password" id="gemini-key" placeholder="Enter your free key...">
+                    <small>Get a free key at <a href="https://aistudio.google.com/" target="_blank">Google AI Studio</a></small>
+                </div>
+                <div class="setting-group">
+                    <label>Ollama Model</label>
+                    <div style="display: flex; gap: 10px;">
+                        <select id="ollama-model-select" style="flex-grow: 1; background: rgba(0,0,0,0.3); color: white; border: 1px solid var(--border-color); border-radius: 8px; padding: 10px;">
+                            <option value="">Fetch models...</option>
+                        </select>
+                        <button class="btn-secondary" id="refresh-models-btn" title="Refresh local models">🔄</button>
+                    </div>
+                    <input type="text" id="ollama-model" placeholder="Or type manually..." style="margin-top: 10px;">
+                    <small>Ensure Ollama is running at <code>127.0.0.1:11434</code></small>
+                    <button class="btn-secondary" id="test-ollama" style="width: 100%; margin-top: 10px;">⚡ Test Connection</button>
+                    
+                    <details style="margin-top: 15px; font-size: 0.8rem; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px;">
+                        <summary style="cursor: pointer; color: var(--accent-blue);">🔧 Ollama Troubleshooting (Click if failing)</summary>
+                        <ol style="margin-top: 10px; padding-left: 20px; line-height: 1.4;">
+                            <li>Open <b>PowerShell</b>.</li>
+                            <li>Run: <code>[System.Environment]::SetEnvironmentVariable("OLLAMA_ORIGINS", "*", "User")</code></li>
+                            <li><b>Close Ollama entirely</b> from the System Tray (near the clock).</li>
+                            <li>Restart Ollama.</li>
+                            <li>Refresh this page.</li>
+                        </ol>
+                    </details>
+                </div>
+
+                <div class="setting-group" style="border-top: 1px solid var(--border-color); padding-top: 20px;">
+                    <label>📁 Project Storage</label>
+                    <div style="background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 10px; word-break: break-all;" id="current-project-path">
+                        No active project file. Using browser storage.
+                    </div>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn-secondary" id="select-project-btn" style="flex:1">📂 Open Project</button>
+                        <button class="btn-secondary" id="new-project-btn" style="flex:1">➕ New Project</button>
+                    </div>
+                    <small style="display: block; margin-top: 8px; opacity: 0.6;">Switching projects will reload all data from the selected .ink file.</small>
+                </div>
             </div>
-            <button class="btn-primary" id="save-settings">Save & Close</button>
+
+            <button class="btn-primary" id="save-settings" style="width: 100%; margin-top: 20px;">Save & Close</button>
         </div>
     </div>
 
@@ -280,8 +334,12 @@
                             <input type="text" id="edit-conflict" placeholder="What stops them?">
                         </div>
                         <div>
-                            <label style="font-size: 0.8rem; opacity: 0.7;">Relationships (Target: Type, ...)</label>
+                            <label style="font-size: 0.8rem; opacity: 0.7;">Relationships (Target: Type ...)</label>
                             <input type="text" id="edit-relationships" placeholder="Jehova: Friend, Lucifer: Enemy">
+                        </div>
+                        <div>
+                            <label style="font-size: 0.8rem; opacity: 0.7;">Location / Home</label>
+                            <input type="text" id="edit-location" placeholder="Abaddon, Heaven, Camelot...">
                         </div>
                     </div>
                 </div>
