@@ -18,6 +18,7 @@
             <div class="logo">
                 <img src="logo.png" alt="Inkweaver Logo" class="logo-img">
                 <h1>Inkweaver</h1>
+                <span style="background: var(--primary-color); color: white; font-size: 0.6rem; padding: 2px 6px; border-radius: 4px; margin-left: 5px; vertical-align: middle;">v1.5.0</span>
             </div>
             <ul class="nav-links">
                 <li class="active" data-view="editor"><span>📝</span> Writing Space</li>
@@ -44,7 +45,9 @@
                 <div class="actions">
                     <button class="btn-secondary" id="export-btn" onclick="exportMarkdown()">📤 Export .MD</button>
                     <button class="btn-secondary" id="toggle-pro-mode">💻 Pro Mode: OFF</button>
+                    <button class="btn-secondary" id="consistency-btn" style="background: #10b981; color: white;">⚖️ Consistency Check</button>
                     <button class="btn-secondary" id="analyze-btn">🔎 Scan Plot Holes</button>
+                    <button class="btn-secondary" onclick="aiTagDialogue()" title="AI Dialogue Attribution">🎙️ Tag Speakers</button>
                     <button class="btn-primary" id="ai-brainstorm">✨ AI Idea</button>
                 </div>
             </header>
@@ -59,6 +62,7 @@
                             <button onclick="insertMarkdown('# ')">H1</button>
                             <button onclick="insertMarkdown('## ')">H2</button>
                             <button onclick="insertMarkdown('> ')">Quote</button>
+                            <button onclick="aiTagDialogue()" title="AI Dialogue Attribution">🎙️ Tag Speakers</button>
                         </div>
                         <input type="text" class="title-input" placeholder="Untitled Chapter...">
                         <div id="editor" contenteditable="true" placeholder="Start your story here..."></div>
@@ -70,7 +74,11 @@
                 <div id="view-outline" class="view-container">
                     <div class="view-header">
                         <h2>Story Outline</h2>
-                        <button class="btn-primary" id="add-plot-point">+ Add Plot Point</button>
+                        <div class="header-actions">
+                            <button class="btn-secondary" id="ai-suggest-scene">🔮 AI Suggest Next Scene</button>
+                            <button class="btn-primary" id="add-chapter-btn">+ Add Chapter</button>
+                            <button class="btn-primary" id="add-plot-point">+ Add Plot Point</button>
+                        </div>
                     </div>
                     <div class="outline-content" id="outline-list">
                         <!-- Points go here -->
@@ -91,8 +99,14 @@
                         </div>
                     </div>
                     <div id="ingest-results" style="margin-top: 30px;" class="hidden">
-                        <h3>Ingest Results</h3>
-                        <div id="ingest-summary-list"></div>
+                        <h3>Select Items to Import</h3>
+                        <p style="font-size: 0.8rem; color: #94a3b8; margin-bottom: 20px;">The AI suggested these updates based on your text. Check the ones you want to keep.</p>
+                        <div id="ingest-staging-area" style="max-height: 500px; overflow-y: auto; background: rgba(0,0,0,0.2); border-radius: 12px; padding: 20px; border: 1px solid var(--border-color);">
+                            <!-- staging items will appear here -->
+                        </div>
+                        <div style="margin-top: 20px;">
+                            <button class="btn-primary" id="confirm-ingest-btn">✅ Import Selected Items</button>
+                        </div>
                     </div>
                 </div>
 
@@ -145,11 +159,19 @@
 
                 <!-- AI Sidebar (Kept persistent or togglable) -->
                 <aside class="ai-suggestions">
-                    <h3>AI Companion</h3>
+                    <div class="sidebar-tabs" style="display: flex; gap: 20px; border-bottom: 1px solid var(--border-color); margin-bottom: 20px; padding-bottom: 10px;">
+                        <h3 id="tab-ai" class="active" style="cursor: pointer; margin-bottom: 0;">AI Companion</h3>
+                        <h3 id="tab-ref" style="cursor: pointer; margin-bottom: 0; color: var(--text-secondary);">📚 Reference</h3>
+                    </div>
+                    
                     <div class="suggestion-list" id="suggestion-container">
                         <div class="empty-state">
-                            <p>Highlight text or click "Scan" to see AI suggestions.</p>
+                            <p>Highlight text or click a button to see AI suggestions.</p>
                         </div>
+                    </div>
+
+                    <div class="reference-list hidden" id="reference-container">
+                        <div class="empty-state">No lore items to reference.</div>
                     </div>
                 </aside>
             </section>
@@ -174,11 +196,119 @@
             </div>
             <div class="setting-group">
                 <label>Ollama Model</label>
-                <input type="text" id="ollama-model" placeholder="e.g. llama3, mistral">
+                <div style="display: flex; gap: 10px;">
+                    <select id="ollama-model-select" style="flex-grow: 1; background: rgba(0,0,0,0.3); color: white; border: 1px solid var(--border-color); border-radius: 8px; padding: 10px;">
+                        <option value="">Fetch models...</option>
+                    </select>
+                    <button class="btn-secondary" id="refresh-models-btn" title="Refresh local models">🔄</button>
+                </div>
+                <input type="text" id="ollama-model" placeholder="Or type manually..." style="margin-top: 10px;">
                 <small>Ensure Ollama is running at <code>127.0.0.1:11434</code></small>
                 <button class="btn-secondary" id="test-ollama" style="width: 100%; margin-top: 10px;">⚡ Test Connection</button>
             </div>
             <button class="btn-primary" id="save-settings">Save & Close</button>
+        </div>
+    </div>
+
+    <!-- Edit Modal -->
+    <div id="edit-modal" class="modal hidden">
+        <div class="modal-content glass" style="max-width: 800px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 id="edit-modal-title">Edit Item</h2>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn-secondary" id="merge-btn" style="background: var(--accent-color); color: white;">🔗 Merge</button>
+                    <button class="btn-secondary" id="delete-btn" style="background: #ef4444; color: white;">🗑️ Delete</button>
+                </div>
+            </div>
+            
+            <div class="edit-form">
+                <div class="setting-group">
+                    <label>Name</label>
+                    <input type="text" id="edit-name">
+                </div>
+                
+                <div id="persona-fields">
+                    <div class="setting-group">
+                        <label>Role</label>
+                        <input type="text" id="edit-role">
+                    </div>
+                    <div class="setting-group">
+                        <label>Traits (comma separated)</label>
+                        <input type="text" id="edit-traits">
+                    </div>
+                </div>
+
+                <div class="setting-group">
+                    <label id="edit-desc-label">Description / Bio</label>
+                    <textarea id="edit-description" style="width: 100%; height: 150px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 8px; color: white; padding: 10px; font-family: inherit;"></textarea>
+                </div>
+
+                <!-- Steckbrief (Expanded Profile) -->
+                <div id="steckbrief-section" class="setting-group">
+                    <label style="color: var(--primary-color); font-weight: bold; margin-bottom: 15px; display: block;">📜 Detailed Profile (Steckbrief)</label>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div>
+                            <label style="font-size: 0.8rem; opacity: 0.7;">Appearance</label>
+                            <input type="text" id="edit-appearance" placeholder="Height, eyes, scars...">
+                        </div>
+                        <div>
+                            <label style="font-size: 0.8rem; opacity: 0.7;">Motivations</label>
+                            <input type="text" id="edit-motivation" placeholder="What drives them?">
+                        </div>
+                        <div>
+                            <label style="font-size: 0.8rem; opacity: 0.7;">Flaws</label>
+                            <input type="text" id="edit-flaws" placeholder="Fatal weaknesses...">
+                        </div>
+                        <div>
+                            <label style="font-size: 0.8rem; opacity: 0.7;">History</label>
+                            <input type="text" id="edit-history" placeholder="Background story...">
+                        </div>
+                        <div>
+                            <label style="font-size: 0.8rem; opacity: 0.7;">Parent(s) (comma separated)</label>
+                            <input type="text" id="edit-parent" placeholder="Father, Mother...">
+                        </div>
+                        <div>
+                            <label style="font-size: 0.8rem; opacity: 0.7;">Spouse Name</label>
+                            <input type="text" id="edit-spouse" placeholder="Exact name of spouse...">
+                        </div>
+                        <div>
+                            <label style="font-size: 0.8rem; opacity: 0.7;">Primary Goal</label>
+                            <input type="text" id="edit-goal" placeholder="What do they want?">
+                        </div>
+                        <div>
+                            <label style="font-size: 0.8rem; opacity: 0.7;">Main Conflict</label>
+                            <input type="text" id="edit-conflict" placeholder="What stops them?">
+                        </div>
+                        <div>
+                            <label style="font-size: 0.8rem; opacity: 0.7;">Relationships (Target: Type, ...)</label>
+                            <input type="text" id="edit-relationships" placeholder="Jehova: Friend, Lucifer: Enemy">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-top: 30px;">
+                <button class="btn-primary" id="save-edit" style="flex-grow: 1;">Save Changes</button>
+                <button class="btn-secondary" id="close-edit">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Merge Modal -->
+    <div id="merge-modal" class="modal hidden">
+        <div class="modal-content glass">
+            <h2>Merge Items</h2>
+            <p>Select the target item to merge current item into. This item will be deleted and its data appended.</p>
+            <div class="setting-group">
+                <label>Target Item</label>
+                <select id="merge-target-list" style="width: 100%; background: rgba(0,0,0,0.3); color: white; border: 1px solid var(--border-color); border-radius: 8px; padding: 10px;">
+                    <!-- Options populated by JS -->
+                </select>
+            </div>
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button class="btn-primary" id="confirm-merge">Confirm Merge</button>
+                <button class="btn-secondary" id="close-merge">Cancel</button>
+            </div>
         </div>
     </div>
 
