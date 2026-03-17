@@ -16,6 +16,13 @@ public partial class Form1 : Form
         this.Height = 900;
         this.StartPosition = FormStartPosition.CenterScreen;
 
+        // Initialize WebView2 early to avoid CS8618
+        webView = new WebView2
+        {
+            Dock = DockStyle.Fill
+        };
+        this.Controls.Add(webView);
+
         // Set Icon
         try {
             string logoPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wwwroot", "logo.png");
@@ -29,12 +36,6 @@ public partial class Form1 : Form
 
     async void InitializeAsync()
     {
-        webView = new WebView2
-        {
-            Dock = DockStyle.Fill
-        };
-        this.Controls.Add(webView);
-
         // Environment for local file access
         var env = await CoreWebView2Environment.CreateAsync(null, Path.Combine(Path.GetTempPath(), "InkweaverStore"));
         await webView.EnsureCoreWebView2Async(env);
