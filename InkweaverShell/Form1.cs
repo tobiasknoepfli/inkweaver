@@ -1,6 +1,9 @@
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using System.Diagnostics;
+using System.IO;
+using System.Text.Json;
+using Microsoft.Data.Sqlite;
 
 namespace InkweaverShell;
 
@@ -36,24 +39,28 @@ public partial class Form1 : Form
 
     async void InitializeAsync()
     {
-        // Environment for local file access
-        var env = await CoreWebView2Environment.CreateAsync(null, Path.Combine(Path.GetTempPath(), "InkweaverStore"));
-        await webView.EnsureCoreWebView2Async(env);
+        try {
+            // Environment for local file access
+            var env = await CoreWebView2Environment.CreateAsync(null, Path.Combine(Path.GetTempPath(), "InkweaverStore"));
+            await webView.EnsureCoreWebView2Async(env);
 
-        // Load the index.html from the application directory
-        string indexPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wwwroot", "index.html");
-        
-        if (File.Exists(indexPath))
-        {
-            webView.CoreWebView2.Navigate(new Uri(indexPath).AbsoluteUri);
-        }
-        else
-        {
-            MessageBox.Show("Could not find 'wwwroot/index.html'. Please ensure the web files are in the correct folder.");
-        }
+            // Load the index.html from the application directory
+            string indexPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wwwroot", "index.html");
+            
+            if (File.Exists(indexPath))
+            {
+                webView.CoreWebView2.Navigate(new Uri(indexPath).AbsoluteUri);
+            }
+            else
+            {
+                MessageBox.Show("Could not find 'wwwroot/index.html'. Please ensure the web files are in the correct folder.");
+            }
 
-        // Add Interop Bridge
-        webView.CoreWebView2.WebMessageReceived += CoreWebView2_WebMessageReceived;
+            // Add Interop Bridge
+            webView.CoreWebView2.WebMessageReceived += CoreWebView2_WebMessageReceived;
+        } catch (Exception ex) {
+            MessageBox.Show("Initialization Error: " + ex.Message);
+        }
     }
 
     private void CoreWebView2_WebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
@@ -62,22 +69,68 @@ public partial class Form1 : Form
         if (string.IsNullOrEmpty(message)) return;
 
         try {
-            if (message == "select_file") {
-                using (OpenFileDialog openFileDialog = new OpenFileDialog()) {
-                    openFileDialog.Filter = "Inkweaver Projects (*.ink)|*.ink|JSON Files (*.json)|*.json|All files (*.*)|*.*";
-                    openFileDialog.FilterIndex = 1;
-                    openFileDialog.RestoreDirectory = true;
+            if (message.StartsWith("list_dir|")) {
+                var path = message.Split('|')[1];
+                
+                try {
+                    if (path == "DRIVES") {
+                        var drives = DriveInfo.GetDrives().Where(d => d.IsReady).Select(d => new {
+                            name = d.Name,
+                            path = d.Name,
+                            isDir = true
+                        });
+                        webView.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { 
+                            type = "directory_list", 
+                            path = "My Computer", 
+                            entries = drives 
+                        }));
+                    } else {
+                        if (string.IsNullOrEmpty(path)) path = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+                        
+                        var entries = Directory.GetFileSystemEntries(path).Select(e => new {
+                            name = Path.GetFileName(e),
+                            path = e,
+                            isDir = Directory.Exists(e)
+                        });
 
-                    if (openFileDialog.ShowDialog() == DialogResult.OK) {
-                        string filePath = openFileDialog.FileName;
-                        string content = File.ReadAllText(filePath);
-                        // Send back to JS: { "type": "file_loaded", "path": "...", "content": "..." }
-                        webView.CoreWebView2.PostWebMessageAsJson(System.Text.Json.JsonSerializer.Serialize(new { 
-                            type = "file_selected", 
-                            path = filePath, 
-                            data = content 
+                        webView.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { 
+                            type = "directory_list", 
+                            path = path, 
+                            entries = entries 
                         }));
                     }
+                } catch (Exception ex) {
+                    webView.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { 
+                        type = "directory_error", 
+                        message = ex.Message 
+                    }));
+                }
+            }
+            else if (message == "get_user_home") {
+                webView.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { 
+                    type = "user_home", 
+                    path = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)
+                }));
+            }
+            else if (message.StartsWith("read_file|")) {
+                var parts = message.Split('|');
+                var path = parts[1];
+                var type = parts.Length > 2 ? parts[2] : "file_selected"; // db or project
+
+                if (File.Exists(path)) {
+                    string content = "";
+                    if (path.EndsWith(".db")) {
+                        EnsureDatabaseSchema(path);
+                        content = LoadFromSqlite(path);
+                    } else {
+                        content = File.ReadAllText(path);
+                    }
+
+                    webView.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { 
+                        type = type == "db" ? "db_selected" : "file_selected", 
+                        path = path, 
+                        data = content 
+                    }));
                 }
             }
             else if (message.StartsWith("save_file|")) {
@@ -86,8 +139,20 @@ public partial class Form1 : Form
                     string path = parts[1];
                     string content = parts[2];
                     File.WriteAllText(path, content);
-                    webView.CoreWebView2.PostWebMessageAsJson(System.Text.Json.JsonSerializer.Serialize(new { 
+                    webView.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { 
                         type = "file_saved", 
+                        path = path 
+                    }));
+                }
+            }
+            else if (message.StartsWith("save_sqlite|")) {
+                var parts = message.Split('|', 3);
+                if (parts.Length == 3) {
+                    string path = parts[1];
+                    string content = parts[2];
+                    SaveToSqlite(path, content);
+                    webView.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { 
+                        type = "db_saved", 
                         path = path 
                     }));
                 }
@@ -97,7 +162,7 @@ public partial class Form1 : Form
                     saveFileDialog.Filter = "Inkweaver Projects (*.ink)|*.ink";
                     saveFileDialog.DefaultExt = "ink";
                     if (saveFileDialog.ShowDialog() == DialogResult.OK) {
-                        webView.CoreWebView2.PostWebMessageAsJson(System.Text.Json.JsonSerializer.Serialize(new { 
+                        webView.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { 
                             type = "project_created", 
                             path = saveFileDialog.FileName 
                         }));
@@ -105,7 +170,51 @@ public partial class Form1 : Form
                 }
             }
         } catch (Exception ex) {
-            MessageBox.Show("Native Bridge Error: " + ex.Message);
+            Debug.WriteLine("Native Bridge Error: " + ex.ToString());
+            MessageBox.Show("Bridge Error: " + ex.Message);
         }
+    }
+
+    private void EnsureDatabaseSchema(string path)
+    {
+        using (var connection = new SqliteConnection($"Data Source={path};Pooling=False"))
+        {
+            connection.Open();
+            var command = connection.CreateCommand();
+            command.CommandText = "CREATE TABLE IF NOT EXISTS ProjectState (Id INTEGER PRIMARY KEY, Data TEXT, LastUpdated DATETIME DEFAULT CURRENT_TIMESTAMP)";
+            command.ExecuteNonQuery();
+        }
+    }
+
+    private void SaveToSqlite(string path, string json)
+    {
+        EnsureDatabaseSchema(path);
+        using (var connection = new SqliteConnection($"Data Source={path};Pooling=False"))
+        {
+            connection.Open();
+            var command = connection.CreateCommand();
+            command.CommandText = "INSERT OR REPLACE INTO ProjectState (Id, Data, LastUpdated) VALUES (1, $data, CURRENT_TIMESTAMP)";
+            command.Parameters.AddWithValue("$data", json);
+            command.ExecuteNonQuery();
+        }
+    }
+
+    private string LoadFromSqlite(string path)
+    {
+        EnsureDatabaseSchema(path);
+        using (var connection = new SqliteConnection($"Data Source={path};Pooling=False"))
+        {
+            connection.Open();
+            var command = connection.CreateCommand();
+            command.CommandText = "SELECT Data FROM ProjectState WHERE Id = 1";
+            using (var reader = command.ExecuteReader())
+            {
+                if (reader.Read())
+                {
+                    return reader.GetString(0);
+                }
+            }
+        }
+        return "";
     }
 }

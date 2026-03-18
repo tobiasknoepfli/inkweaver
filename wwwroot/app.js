@@ -17,7 +17,8 @@ const state = {
         aiProvider: localStorage.getItem('inkweaver_ai_provider') || 'gemini',
         geminiKey: localStorage.getItem('inkweaver_gemini_key') || '',
         ollamaModel: localStorage.getItem('inkweaver_ollama_model') || 'llama3',
-        projectPath: localStorage.getItem('inkweaver_project_path') || ''
+        projectPath: localStorage.getItem('inkweaver_project_path') || '',
+        dbPath: localStorage.getItem('inkweaver_db_path') || ''
     }
 };
 
@@ -43,12 +44,18 @@ function setupEventListeners() {
     editor.addEventListener('input', () => {
         state.currentDraft.content = editor.innerHTML;
         saveAllData();
+        updateWordCounts();
     });
 
     titleInput.addEventListener('input', () => {
         state.currentDraft.title = titleInput.value;
         saveAllData();
+        updateWordCounts();
     });
+
+    document.getElementById('editor').addEventListener('keyup', updateWordCounts);
+    document.getElementById('editor').addEventListener('mouseup', updateSelectionActions);
+    document.addEventListener('selectionchange', updateSelectionActions);
 
     // Sidebar View Switching
     document.querySelectorAll('.nav-links li').forEach(li => {
@@ -139,18 +146,38 @@ function setupEventListeners() {
 
     // File Interop
     document.getElementById('select-project-btn').addEventListener('click', () => {
-        if (window.chrome?.webview) {
-            window.chrome.webview.postMessage("select_file");
-        } else {
-            alert("Native file access is only available in the Desktop Shell.");
-        }
+        openFilePicker({ mode: 'open', type: 'project', title: 'Open Project (.ink)' });
     });
 
     document.getElementById('new-project-btn').addEventListener('click', () => {
-        if (window.chrome?.webview) {
-            window.chrome.webview.postMessage("new_project");
-        } else {
-            alert("Native file access is only available in the Desktop Shell.");
+        openFilePicker({ mode: 'save', type: 'project', title: 'Create New Project' });
+    });
+
+    document.getElementById('select-db-btn').addEventListener('click', () => {
+        openFilePicker({ mode: 'open', type: 'db', title: 'Link Existing SQLite Database' });
+    });
+
+    document.getElementById('create-db-btn').addEventListener('click', () => {
+        openFilePicker({ mode: 'save', type: 'db', title: 'Create New SQLite Database' });
+    });
+
+    // Picker UI Events
+    document.getElementById('close-picker').addEventListener('click', closeFilePicker);
+    document.getElementById('cancel-picker').addEventListener('click', closeFilePicker);
+    document.getElementById('picker-up-btn').addEventListener('click', pickerNavigateUp);
+    document.getElementById('picker-home-btn').addEventListener('click', () => {
+        window.chrome.webview.postMessage("get_user_home");
+    });
+    document.getElementById('picker-drives-btn').addEventListener('click', () => {
+        window.chrome.webview.postMessage("list_dir|DRIVES");
+    });
+    document.getElementById('confirm-picker').addEventListener('click', confirmPickerSelection);
+
+    document.getElementById('send-chat').addEventListener('click', handleAIChat);
+    document.getElementById('chat-input').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleAIChat();
         }
     });
 
@@ -169,8 +196,10 @@ function handleNativeMessage(event) {
             localStorage.setItem('inkweaver_project_path', msg.path);
             document.getElementById('current-project-path').innerText = msg.path;
             addSuggestion("✅ Project loaded from: " + msg.path, "idea");
+            closeFilePicker();
         } catch (e) {
             alert("Failed to parse project file: " + e.message);
+            closeFilePicker();
         }
     } else if (msg.type === 'project_created') {
         state.settings.projectPath = msg.path;
@@ -178,6 +207,137 @@ function handleNativeMessage(event) {
         document.getElementById('current-project-path').innerText = msg.path;
         saveAllData();
         addSuggestion("🆕 New project created at: " + msg.path, "idea");
+        closeFilePicker();
+    } else if (msg.type === 'directory_list') {
+        renderPickerList(msg.path, msg.entries);
+    } else if (msg.type === 'directory_error') {
+        alert("Error accessing folder: " + msg.message);
+    } else if (msg.type === 'user_home') {
+        state.pickerCurrentPath = msg.path;
+        window.chrome.webview.postMessage(`list_dir|${msg.path}`);
+    } else if (msg.type === 'db_selected') {
+        state.settings.dbPath = msg.path;
+        localStorage.setItem('inkweaver_db_path', msg.path);
+        document.getElementById('current-db-path').innerText = msg.path;
+        if (msg.data) {
+            try {
+                const data = JSON.parse(msg.data);
+                applyProjectData(data);
+                addSuggestion("🗄️ Database linked and data loaded.", "idea");
+                closeFilePicker();
+            } catch (e) {
+                console.error("DB Parse Error:", e);
+                alert("Database contains invalid data format. Starting fresh.");
+                saveAllData();
+                closeFilePicker();
+            }
+        } else {
+            saveAllData(); // Seed the new DB
+            addSuggestion("🗄️ New database created and initialized.", "idea");
+            closeFilePicker();
+        }
+    }
+}
+
+// Picker Logic
+state.pickerSession = null;
+state.pickerCurrentPath = "";
+state.pickerSelection = "";
+
+function openFilePicker(options) {
+    state.pickerSession = options;
+    document.getElementById('picker-title').innerText = options.title;
+    document.getElementById('file-picker-modal').classList.remove('hidden');
+    
+    if (options.mode === 'save') {
+        document.getElementById('picker-save-ui').classList.remove('hidden');
+        document.getElementById('picker-filename').value = options.type === 'db' ? 'my_project.db' : 'story.ink';
+    } else {
+        document.getElementById('picker-save-ui').classList.add('hidden');
+    }
+
+    if (window.chrome?.webview) {
+        if (!state.pickerCurrentPath) {
+            window.chrome.webview.postMessage("get_user_home");
+        } else {
+            window.chrome.webview.postMessage(`list_dir|${state.pickerCurrentPath}`);
+        }
+    } else {
+        alert("File browsing requires the Desktop Shell.");
+    }
+}
+
+function closeFilePicker() {
+    document.getElementById('file-picker-modal').classList.add('hidden');
+}
+
+function renderPickerList(path, entries) {
+    state.pickerCurrentPath = path;
+    document.getElementById('current-picker-path').innerText = path;
+    const list = document.getElementById('picker-list');
+    
+    // Sort directories first
+    entries.sort((a,b) => b.isDir - a.isDir || a.name.localeCompare(b.name));
+
+    list.innerHTML = entries.map(e => `
+        <div class="picker-item" onclick="handlePickerClick('${e.path.replace(/\\/g, '\\\\')}', ${e.isDir}, event)">
+            <span class="picker-icon">${e.isDir ? '📁' : '📄'}</span>
+            <span class="picker-name">${e.name}</span>
+        </div>
+    `).join('');
+}
+
+window.handlePickerClick = (path, isDir, event) => {
+    if (isDir) {
+        window.chrome.webview.postMessage(`list_dir|${path}`);
+    } else {
+        // Toggle selection
+        document.querySelectorAll('.picker-item').forEach(i => i.classList.remove('selected'));
+        event.currentTarget.classList.add('selected');
+        state.pickerSelection = path;
+        
+        if (state.pickerSession.mode === 'save') {
+            document.getElementById('picker-filename').value = path.split(/[\\\/]/).pop();
+        }
+    }
+};
+
+function pickerNavigateUp() {
+    const parts = state.pickerCurrentPath.split(/[\\\/]/);
+    if (parts.length > 1) {
+        parts.pop();
+        const newPath = parts.join('\\') || parts.join('/');
+        window.chrome.webview.postMessage(`list_dir|${newPath}`);
+    }
+}
+
+function confirmPickerSelection() {
+    if (state.pickerSession.mode === 'open') {
+        if (!state.pickerSelection) return alert("Please select a file.");
+        window.chrome.webview.postMessage(`read_file|${state.pickerSelection}|${state.pickerSession.type}`);
+    } else {
+        const filename = document.getElementById('picker-filename').value;
+        if (!filename) return alert("Please enter a filename.");
+        
+        const fullPath = state.pickerCurrentPath + "\\" + filename;
+        if (state.pickerSession.type === 'db') {
+            // Shell handles creation when we "save" to it via the read_file logic if we want to follow existing flow,
+            // or we just tell it to start a new DB chain.
+            // Let's use save_sqlite directly if it exists, or update shell.
+            state.settings.dbPath = fullPath;
+            localStorage.setItem('inkweaver_db_path', fullPath);
+            document.getElementById('current-db-path').innerText = fullPath;
+            saveAllData();
+            addSuggestion("🗄️ New database created and linked.", "idea");
+            closeFilePicker();
+        } else {
+            state.settings.projectPath = fullPath;
+            localStorage.setItem('inkweaver_project_path', fullPath);
+            document.getElementById('current-project-path').innerText = fullPath;
+            saveAllData();
+            addSuggestion("🆕 New project path set.", "idea");
+            closeFilePicker();
+        }
     }
 }
 
@@ -290,11 +450,22 @@ function saveAllData() {
     if (state.settings.projectPath && window.chrome?.webview) {
         window.chrome.webview.postMessage(`save_file|${state.settings.projectPath}|${JSON.stringify(fullData)}`);
     }
+
+    // SQLite Sync
+    if (state.settings.dbPath && window.chrome?.webview) {
+        window.chrome.webview.postMessage(`save_sqlite|${state.settings.dbPath}|${JSON.stringify(fullData)}`);
+    }
 }
 
 function loadAllData() {
     if (state.settings.projectPath) {
         document.getElementById('current-project-path').innerText = state.settings.projectPath;
+    }
+    if (state.settings.dbPath) {
+        document.getElementById('current-db-path').innerText = state.settings.dbPath;
+        if (window.chrome?.webview) {
+            window.chrome.webview.postMessage(`read_file|${state.settings.dbPath}|db`);
+        }
     }
 
     const saved = localStorage.getItem('inkweaver_full_state');
@@ -317,6 +488,7 @@ function applyProjectData(data) {
     titleInput.value = state.currentDraft.title || "";
     document.getElementById('scratchpad-editor').value = state.scratchpad;
     renderAllViews();
+    updateWordCounts();
 }
 
 // Object Creation
@@ -746,10 +918,9 @@ async function aiSmartGroupOutline() {
         `;
 
         const responseText = await callAI(prompt);
-        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-            const data = JSON.parse(jsonMatch[0]);
-            
+        const data = parseAIJSON(responseText);
+        
+        if (data && data.chapters) {
             if (confirm("The AI has suggested a new structure for your outline. Apply changes?")) {
                 state.chapters = data.chapters.map(ch => ({
                     id: 'ch_' + Date.now() + Math.random(),
@@ -1122,11 +1293,9 @@ async function aiGenerateCharacter() {
             "parent": "Name of an existing character if applicable or leave empty"
         }`;
         const responseText = await callAI(prompt);
+        const charData = parseAIJSON(responseText);
         
-        // Extract JSON from response (handling potential markdown)
-        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-            const charData = JSON.parse(jsonMatch[0]);
+        if (charData) {
             const newChar = { id: Date.now(), ...charData };
             state.personas.push(newChar);
             saveAllData();
@@ -1206,6 +1375,28 @@ async function callAI(prompt) {
         return await callGemini(prompt);
     } else {
         return await callOllama(prompt);
+    }
+}
+
+function parseAIJSON(text) {
+    try {
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+             throw new Error("AI response did not contain a JSON block (curly braces missing).");
+        }
+        return JSON.parse(jsonMatch[0]);
+    } catch (e) {
+        console.error("Failed to parse AI JSON. Raw text:", text);
+        // Fallback for minor syntax errors or truncated responses
+        try {
+            // Try to fix common issues like trailing commas or missing quotes for simple cases
+            // (Minimal fix to avoid over-complicating)
+            const cleaned = text.trim();
+            if (cleaned.startsWith('{') && cleaned.endsWith('}')) {
+                return JSON.parse(cleaned);
+            }
+        } catch (e2) {}
+        throw new Error("AI returned malformed data. Please try again.");
     }
 }
 
@@ -1413,9 +1604,7 @@ async function startAIIngest() {
 
     try {
         const responseText = await callAI(prompt);
-        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-        const jsonString = jsonMatch ? jsonMatch[0] : responseText;
-        const data = JSON.parse(jsonString);
+        const data = parseAIJSON(responseText);
         
         stagedIngestData = data;
         renderStagingArea(data);
@@ -1603,5 +1792,161 @@ window.insertMarkdown = (syntax) => {
     document.execCommand('insertText', false, syntax);
 };
 
+function updateWordCounts() {
+    const chapterText = document.getElementById('editor').innerText || "";
+    const chapterWords = chapterText.trim() ? chapterText.trim().split(/\s+/).length : 0;
+    const chapterLetters = chapterText.length;
+
+    document.getElementById('chapter-words').innerText = chapterWords;
+    document.getElementById('chapter-letters').innerText = chapterLetters;
+
+    // Document Totals
+    let totalWords = chapterWords;
+    let totalLetters = chapterLetters;
+
+    state.chapters.forEach(ch => {
+        // Skip current chapter if it's already in the state and we're editing it?
+        // Actually, let's just sum up everything in state and add the editor if needed.
+        // It's safer to just iterate everything saved.
+        ch.points.forEach(p => {
+            totalWords += (p.content || "").trim().split(/\s+/).length;
+            totalLetters += (p.content || "").length;
+        });
+    });
+
+    document.getElementById('document-words').innerText = totalWords;
+    document.getElementById('document-letters').innerText = totalLetters;
+}
+
+async function handleAIChat() {
+    const input = document.getElementById('chat-input');
+    const query = input.value.trim();
+    const useWeb = document.getElementById('ai-search-web').checked;
+
+    if (!query) return;
+
+    addSuggestion(`<b>You:</b> ${query}`, "idea");
+    input.value = "";
+    addSuggestion("🎬 Thinking...", "loading");
+
+    try {
+        const context = getProjectContext();
+        let prompt = `
+            Context: ${context}
+            
+            Current Question: ${query}
+            
+            TASK: Act as a research assistant and story companion. 
+            If the user asked for specific facts/research, provide accurate info.
+            ${useWeb ? "NOTE: The user has requested deep research. If you need 2024/2025 info, please specify you are using simulated up-to-date knowledge or suggest a search." : ""}
+        `;
+
+        const response = await callAI(prompt);
+        removeLoading();
+        addSuggestion(`<b>AI:</b> ${response}`, "idea");
+    } catch (err) {
+        removeLoading();
+        addSuggestion(`❌ Chat Error: ${err.message}`, "error");
+    }
+}
+
+async function aiRewriteSelection() {
+    const selection = window.getSelection().toString();
+    if (!selection) return alert("Please highlight some text first.");
+
+    addSuggestion("✍️ Rewriting highlighted section...", "loading");
+    try {
+        const prompt = `Rewrite the following text from a story to be more engaging and polished, while keeping the meaning. Return only the rewritten text.\n\nText: "${selection}"`;
+        const response = await callAI(prompt);
+        removeLoading();
+        addSuggestion(`<b>Rewritten:</b><br>${response}<br><button onclick="replaceSelectionWith('${response.replace(/'/g, "\\'")}')" class="btn-primary" style="margin-top:5px; font-size:0.7rem;">Apply Rewrite</button>`, "idea");
+    } catch (err) {
+        removeLoading();
+        addSuggestion(`❌ Rewrite Error: ${err.message}`, "error");
+    }
+}
+
+async function aiCheckSelection() {
+    const selection = window.getSelection().toString();
+    if (!selection) return alert("Please highlight some text first.");
+
+    const userNote = prompt("What should the AI check for specifically? (e.g., consistency with character traits, world rules, or pacing/tone)", "Check for consistency and flow");
+    if (userNote === null) return; // User cancelled
+
+    addSuggestion(`🔍 Checking section: "${userNote}"`, "loading");
+    try {
+        const context = getProjectContext();
+        const prompt = `
+            ${context}
+            
+            SPECIFIC CONCERN: ${userNote}
+            
+            TEXT TO ANALYZE: "${selection}"
+            
+            TASK: Act as an expert editor. Analyze the provided text section specifically addressing the user's concern. Check for:
+            1. Logical consistency with established characters and world bible.
+            2. Adherence to World Rules.
+            3. Tone, pacing, and flow within the context of the story.
+            
+            Return a brief, helpful analysis and actionable suggestions.
+        `;
+        const response = await callAI(prompt);
+        removeLoading();
+        addSuggestion("<b>AI Analysis & Feedback:</b><br>" + response, "idea");
+    } catch (err) {
+        removeLoading();
+        addSuggestion(`❌ Check Error: ${err.message}`, "error");
+    }
+}
+
+async function aiGetWordInfo(type) {
+    const selection = window.getSelection().toString().trim();
+    if (!selection) return;
+
+    addSuggestion(`✨ Finding ${type} for "${selection}"...`, "loading");
+    try {
+        const prompt = `Provide a list of up to 10 ${type} for the word "${selection}". Return as a comma-separated list. No other text.`;
+        const response = await callAI(prompt);
+        removeLoading();
+        addSuggestion(`<b>${type.charAt(0).toUpperCase() + type.slice(1)} for "${selection}":</b><br>${response}`, "idea");
+    } catch (err) {
+        removeLoading();
+        addSuggestion(`❌ Error: ${err.message}`, "error");
+    }
+}
+
+function updateSelectionActions() {
+    const selection = window.getSelection().toString().trim();
+    const actions = document.getElementById('selection-actions');
+    const wordTools = document.getElementById('word-tools');
+    const passageTools = document.getElementById('passage-tools');
+
+    if (selection.length > 1) {
+        actions.classList.remove('hidden');
+        const isSingleWord = selection.split(/\s+/).length === 1;
+
+        if (isSingleWord) {
+            wordTools.classList.remove('hidden');
+            passageTools.classList.add('hidden');
+        } else {
+            wordTools.classList.add('hidden');
+            passageTools.classList.remove('hidden');
+        }
+    } else {
+        actions.classList.add('hidden');
+    }
+}
+
+window.replaceSelectionWith = (newText) => {
+    const selection = window.getSelection();
+    if (!selection.rangeCount) return;
+    const range = selection.getRangeAt(0);
+    range.deleteContents();
+    range.insertNode(document.createTextNode(newText));
+    saveAllData();
+    updateWordCounts();
+};
+
 // Start
 init();
+updateWordCounts();

@@ -65,11 +65,17 @@
                             <button onclick="insertMarkdown('# ')">H1</button>
                             <button onclick="insertMarkdown('## ')">H2</button>
                             <button onclick="insertMarkdown('> ')">Quote</button>
+                            <button class="btn-secondary" onclick="aiRewriteSelection()" style="padding: 2px 10px; font-size: 0.7rem;">✍️ Rewrite</button>
+                            <button class="btn-secondary" onclick="aiCheckSelection()" style="padding: 2px 10px; font-size: 0.7rem;">🔍 Check</button>
                             <button onclick="aiTagDialogue()" title="AI Dialogue Attribution">🎙️ Tag Speakers</button>
                         </div>
                         <input type="text" class="title-input" placeholder="Untitled Chapter...">
                         <div id="editor" contenteditable="true" placeholder="Start your story here..."></div>
                         <div id="markdown-preview" class="hidden"></div>
+                        <div class="editor-footer" style="padding: 10px; border-top: 1px solid var(--border-color); font-size: 0.8rem; color: var(--text-secondary); display: flex; gap: 20px; background: rgba(0,0,0,0.2);">
+                            <span>Chapter: <b id="chapter-words">0</b> words / <b id="chapter-letters">0</b> chars</span>
+                            <span>Document: <b id="document-words">0</b> words / <b id="document-letters">0</b> chars</span>
+                        </div>
                     </div>
                 </div>
 
@@ -192,9 +198,37 @@
                         <h3 id="tab-ref" style="cursor: pointer; margin-bottom: 0; color: var(--text-secondary);">📚 Reference</h3>
                     </div>
                     
-                    <div class="suggestion-list" id="suggestion-container">
+                    <div class="suggestion-list" id="suggestion-container" style="flex-grow: 1; overflow-y: auto;">
                         <div class="empty-state">
                             <p>Highlight text or click a button to see AI suggestions.</p>
+                        </div>
+                    </div>
+
+                    <div id="selection-actions" class="hidden" style="margin-top: 10px; padding: 10px; border: 1px dashed var(--accent-blue); border-radius: 8px;">
+                        <div id="word-tools" class="hidden">
+                             <small style="color: var(--accent-blue); margin-bottom: 5px; display: block;">Word Tools</small>
+                             <div style="display: flex; gap: 5px; margin-bottom: 10px;">
+                                <button onclick="aiGetWordInfo('synonyms')" class="btn-secondary" style="flex: 1; font-size: 0.7rem;">Synonyms</button>
+                                <button onclick="aiGetWordInfo('antonyms')" class="btn-secondary" style="flex: 1; font-size: 0.7rem;">Antonyms</button>
+                             </div>
+                        </div>
+
+                        <div id="passage-tools" class="hidden">
+                            <small style="color: var(--accent-blue); margin-bottom: 5px; display: block;">Passage Actions</small>
+                            <div style="display: flex; gap: 5px;">
+                                <button onclick="aiRewriteSelection()" class="btn-secondary" style="flex: 1; font-size: 0.7rem;">Rewrite</button>
+                                <button onclick="aiCheckSelection()" class="btn-secondary" style="flex: 1; font-size: 0.7rem;">Check</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="ai-chat-container" style="margin-top: 10px; border-top: 1px solid var(--border-color); padding-top: 15px;">
+                        <div style="display: flex; flex-direction: column; gap: 10px;">
+                            <textarea id="chat-input" placeholder="Ask a question or research topic..." style="width: 100%; height: 60px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: white; border-radius: 8px; padding: 10px; outline: none; resize: none;"></textarea>
+                            <button id="send-chat" class="btn-primary" style="width: 100%;">💬 Ask AI</button>
+                            <label style="font-size: 0.7rem; color: var(--text-secondary); display: flex; align-items: center; gap: 5px;">
+                                <input type="checkbox" id="ai-search-web"> Allow Web Search (Deep Research)
+                            </label>
                         </div>
                     </div>
 
@@ -248,19 +282,62 @@
                 </div>
 
                 <div class="setting-group" style="border-top: 1px solid var(--border-color); padding-top: 20px;">
-                    <label>📁 Project Storage</label>
+                    <label>🗄️ SQLite Database (Native Storage)</label>
+                    <div style="background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 10px; word-break: break-all;" id="current-db-path">
+                        No active database. Using local JSON files.
+                    </div>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn-secondary" id="select-db-btn" style="flex: 1">📂 Link Existing DB</button>
+                        <button class="btn-primary" id="create-db-btn" style="flex: 1">➕ Create New DB</button>
+                    </div>
+                    <small style="display: block; margin-top: 8px; opacity: 0.6;">SQLite is more robust for large projects and prevents data loss. All changes are synced to this file.</small>
+                </div>
+
+                <div class="setting-group" style="border-top: 1px solid var(--border-color); padding-top: 20px;">
+                    <label>📁 Project Storage (.ink files)</label>
                     <div style="background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 10px; word-break: break-all;" id="current-project-path">
                         No active project file. Using browser storage.
                     </div>
                     <div style="display: flex; gap: 10px;">
                         <button class="btn-secondary" id="select-project-btn" style="flex:1">📂 Open Project</button>
-                        <button class="btn-secondary" id="new-project-btn" style="flex:1">➕ New Project</button>
+                        <button class="btn-primary" id="new-project-btn" style="flex:1">➕ New Project</button>
                     </div>
-                    <small style="display: block; margin-top: 8px; opacity: 0.6;">Switching projects will reload all data from the selected .ink file.</small>
+                    <small style="display: block; margin-top: 8px; opacity: 0.6;">Switching projects or DBs will reload all data.</small>
                 </div>
             </div>
 
             <button class="btn-primary" id="save-settings" style="width: 100%; margin-top: 20px;">Save & Close</button>
+        </div>
+    </div>
+
+    <!-- Custom File Picker Modal -->
+    <div id="file-picker-modal" class="modal hidden">
+        <div class="modal-content" style="max-width: 800px; height: 80vh; display: flex; flex-direction: column;">
+            <div class="modal-header">
+                <h2 id="picker-title">Select File</h2>
+                <button class="close-btn" id="close-picker">&times;</button>
+            </div>
+            
+            <div class="picker-path" style="padding: 10px; background: rgba(0,0,0,0.3); font-family: monospace; font-size: 0.8rem; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 10px;">
+                <button class="btn-secondary" id="picker-up-btn" style="padding: 2px 8px;">↑ Up</button>
+                <button class="btn-secondary" id="picker-home-btn" style="padding: 2px 8px;">🏠 Home</button>
+                <button class="btn-secondary" id="picker-drives-btn" style="padding: 2px 8px;">💻 Computer</button>
+                <div id="current-picker-path" style="flex-grow: 1; word-break: break-all;">C:\...</div>
+            </div>
+
+            <div id="picker-list" style="flex-grow: 1; overflow-y: auto; padding: 10px;">
+                <!-- Files and Folders will appear here -->
+            </div>
+
+            <div class="modal-footer" style="padding: 15px; border-top: 1px solid var(--border-color);">
+                <div id="picker-save-ui" class="hidden" style="margin-bottom: 10px;">
+                    <input type="text" id="picker-filename" placeholder="filename.db" style="width: 100%; background: rgba(0,0,0,0.5); border: 1px solid var(--border-color); color: white; padding: 8px; border-radius: 4px;">
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn-secondary" id="cancel-picker" style="flex: 1">Cancel</button>
+                    <button class="btn-primary" id="confirm-picker" style="flex: 1">Confirm</button>
+                </div>
+            </div>
         </div>
     </div>
 

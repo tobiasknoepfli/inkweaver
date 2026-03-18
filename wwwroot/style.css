@@ -192,8 +192,20 @@ h1, h2, h3 {
     flex-grow: 1;
     display: flex;
     flex-direction: column;
-    padding: 60px 80px;
-    overflow-y: auto;
+    height: 100%;
+    max-width: 1000px;
+    margin: 0 auto;
+    width: 100%;
+    overflow: hidden; /* Container doesn't scroll anymore */
+}
+
+.editor-toolbar {
+    display: flex;
+    gap: 10px;
+    padding: 10px;
+    background: rgba(0,0,0,0.2);
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
 }
 
 .title-input {
@@ -203,17 +215,20 @@ h1, h2, h3 {
     font-size: 2.5rem;
     font-weight: 700;
     font-family: 'Outfit', sans-serif;
-    margin-bottom: 30px;
+    margin-bottom: 10px;
+    padding: 0 40px;
     outline: none;
+    flex-shrink: 0;
 }
 
 #editor {
     flex-grow: 1;
-    font-size: 1.2rem;
-    line-height: 1.8;
+    font-size: 11pt;
+    line-height: 1.6;
     color: #cbd5e1;
     outline: none;
-    min-height: 500px;
+    padding: 40px;
+    overflow-y: auto; /* Editor area scrolls now */
 }
 
 #editor:empty:before {
@@ -223,12 +238,23 @@ h1, h2, h3 {
 
 /* AI Suggestions Sidebar */
 .ai-suggestions {
-    width: 320px;
+    width: 350px;
+    min-width: 350px;
+    flex-shrink: 0;
     background: var(--glass-bg);
     backdrop-filter: blur(12px);
     border-left: 1px solid var(--border-color);
     padding: 24px;
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+
+.editor-footer {
+    display: flex;
+    justify-content: flex-start;
+    gap: 30px;
+    border-top: 1px solid var(--border-color);
+    margin-top: auto;
 }
 
 .ai-suggestions h3 {
@@ -629,6 +655,37 @@ h1, h2, h3 {
 /* Mermaid Tree */
 #family-tree-container svg {
     max-width: 100%;
+    --accent-red: #ef4444;
+}
+
+.picker-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.2s;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+.picker-item:hover {
+    background: rgba(255,255,255,0.08);
+}
+
+.picker-item.selected {
+    background: var(--accent-blue);
+    color: white;
+}
+
+.picker-icon {
+    font-size: 1.2rem;
+    opacity: 0.8;
+}
+
+.picker-name {
+    flex-grow: 1;
+    font-size: 0.9rem;
 }
 
 .hidden { display: none !important; }
@@ -808,3 +865,35 @@ h1, h2, h3 {
 .mermaid svg {
     max-width: none !important;
 }
+
+.picker-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.2s;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+.picker-item:hover {
+    background: rgba(255,255,255,0.08);
+}
+
+.picker-item.selected {
+    background: var(--accent-blue);
+    color: white;
+}
+
+.picker-icon {
+    font-size: 1.2rem;
+    opacity: 0.8;
+}
+
+.picker-name {
+    flex-grow: 1;
+    font-size: 0.9rem;
+}
+
+.hidden { display: none !important; }
