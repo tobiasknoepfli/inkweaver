@@ -14,9 +14,8 @@ public partial class Form1 : Form
     public Form1()
     {
         InitializeComponent();
-        this.Text = "Inkweaver | AI Writer's Suite";
-        this.Width = 1400;
-        this.Height = 900;
+        this.FormBorderStyle = FormBorderStyle.Sizable;
+        this.WindowState = FormWindowState.Maximized;
         this.StartPosition = FormStartPosition.CenterScreen;
 
         // Initialize WebView2 early to avoid CS8618
@@ -155,6 +154,20 @@ public partial class Form1 : Form
                         type = "db_saved", 
                         path = path 
                     }));
+                }
+            }
+            else if (message.StartsWith("window_state|")) {
+                var state = message.Split('|')[1];
+                if (state == "fullscreen" || state == "maximized") {
+                    this.FormBorderStyle = FormBorderStyle.Sizable;
+                    this.WindowState = FormWindowState.Maximized;
+                } else if (state == "minimize") {
+                    this.WindowState = FormWindowState.Minimized;
+                } else if (state == "close") {
+                    this.Close();
+                } else {
+                    this.FormBorderStyle = FormBorderStyle.Sizable;
+                    this.WindowState = FormWindowState.Normal;
                 }
             }
             else if (message == "new_project") {

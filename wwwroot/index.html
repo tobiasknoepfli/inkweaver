@@ -24,12 +24,12 @@
             <ul class="nav-links">
                 <li class="active" data-view="editor"><span>📝</span> Writing Space</li>
                 <li data-view="outline"><span>📊</span> Outlines</li>
-                <li data-view="ingest"><span>📥</span> AI Ingest</li>
                 <li data-view="world"><span>🌍</span> World Bible</li>
                 <li data-view="persona"><span>🎭</span> Personas</li>
                 <li data-view="family"><span>🌳</span> Family Tree</li>
                 <li data-view="timeline"><span>⏳</span> Timeline</li>
                 <li data-view="rules"><span>📜</span> World Rules</li>
+                <li data-view="ingest"><span>📥</span> AI Ingest</li>
                 <li data-view="scratchpad"><span>🗒️</span> Notations</li>
             </ul>
             <div class="bottom-nav">
@@ -37,166 +37,89 @@
                     <div class="status-indicator online"></div>
                     <span>AI Ready (Gemini)</span>
                 </div>
-                <button id="settings-btn">⚙️ Settings</button>
+                <button id="settings-btn" onclick="openSettings()">⚙️ Settings</button>
             </div>
         </nav>
 
         <!-- Main Content Area -->
         <main class="content">
-            <header class="content-header">
-                <div class="breadcrumb">Chapter 1 / The Beginning</div>
-                <div class="actions">
-                    <button class="btn-secondary" id="export-btn" onclick="exportMarkdown()">📤 Export .MD</button>
-                    <button class="btn-secondary" id="toggle-pro-mode">💻 Pro Mode: OFF</button>
-                    <button class="btn-secondary" id="consistency-btn" style="background: #10b981; color: white;">⚖️ Consistency Check</button>
-                    <button class="btn-secondary" id="analyze-btn">🔎 Scan Plot Holes</button>
-                    <button class="btn-secondary" onclick="aiTagDialogue()" title="AI Dialogue Attribution">🎙️ Tag Speakers</button>
-                    <button class="btn-primary" id="ai-brainstorm">✨ AI Idea</button>
+            <header class="content-header" style="height: auto; padding: 15px 40px; border-bottom: 2px solid var(--border-color); background: rgba(0,0,0,0.2);">
+                <div class="toolbar-actions" style="display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0;">
+                    <button class="btn-tool" onclick="document.execCommand('bold')"><b>B</b></button>
+                    <button class="btn-tool" onclick="document.execCommand('italic')"><i>I</i></button>
+                    <button class="btn-tool" onclick="toggleHeading('h1')">H1</button>
+                    <button class="btn-tool" onclick="toggleHeading('h2')">H2</button>
+                    <button class="btn-tool" onclick="insertMarkdown('> ')">Quote</button>
+                    <div style="width: 1px; height: 20px; background: var(--border-color); margin: 0 5px;"></div>
+                    <button class="btn-tool" onclick="aiRewriteSelection()" title="Rewrite Selection">✍️</button>
+                    <button class="btn-tool" onclick="aiCheckSelection()" title="Check Section">🔍</button>
+                    <button class="btn-tool" onclick="aiTagDialogue()" title="Tag Speakers">🎙️</button>
+                    <button class="btn-tool" onclick="createBookmarkFromSelection()" title="Add Bookmark">🔖</button>
+                </div>
+                <div class="actions" style="display: flex; gap: 8px;">
+                    <button class="btn-secondary" id="export-btn" onclick="exportMarkdown()" style="padding: 6px 12px; font-size: 0.8rem;">📤 Export</button>
+                    <button class="btn-secondary" id="consistency-btn" style="background: #10b981; color: white; padding: 6px 12px; font-size: 0.8rem;">⚖️ Integrity</button>
+                    <button class="btn-primary" id="ai-brainstorm" style="padding: 6px 12px; font-size: 0.8rem;">✨ AI Idea</button>
                 </div>
             </header>
 
-            <section class="work-area">
-                <!-- Editor View (Default) -->
+            <section class="work-area" style="flex-grow: 1; display: flex; overflow: hidden;">
                 <div id="view-editor" class="view-container active">
                     <div class="editor-container">
-                        <div class="editor-toolbar hidden" id="pro-toolbar">
-                            <button onclick="document.execCommand('bold')"><b>B</b></button>
-                            <button onclick="document.execCommand('italic')"><i>I</i></button>
-                            <button onclick="insertMarkdown('# ')">H1</button>
-                            <button onclick="insertMarkdown('## ')">H2</button>
-                            <button onclick="insertMarkdown('> ')">Quote</button>
-                            <button class="btn-secondary" onclick="aiRewriteSelection()" style="padding: 2px 10px; font-size: 0.7rem;">✍️ Rewrite</button>
-                            <button class="btn-secondary" onclick="aiCheckSelection()" style="padding: 2px 10px; font-size: 0.7rem;">🔍 Check</button>
-                            <button onclick="aiTagDialogue()" title="AI Dialogue Attribution">🎙️ Tag Speakers</button>
+                        <div class="roll-scroll-container">
+                            <div id="editor" contenteditable="true" placeholder="Start your story here..."></div>
+                            <div id="markdown-preview" class="hidden"></div>
                         </div>
-                        <input type="text" class="title-input" placeholder="Untitled Chapter...">
-                        <div id="editor" contenteditable="true" placeholder="Start your story here..."></div>
-                        <div id="markdown-preview" class="hidden"></div>
-                        <div class="editor-footer" style="padding: 10px; border-top: 1px solid var(--border-color); font-size: 0.8rem; color: var(--text-secondary); display: flex; gap: 20px; background: rgba(0,0,0,0.2);">
+                        <div class="editor-footer" style="padding: 10px 40px; border-top: 1px solid var(--border-color); font-size: 0.8rem; color: var(--text-secondary); display: flex; gap: 20px; background: rgba(0,0,0,0.3); backdrop-filter: blur(10px); z-index: 100;">
                             <span>Chapter: <b id="chapter-words">0</b> words / <b id="chapter-letters">0</b> chars</span>
                             <span>Document: <b id="document-words">0</b> words / <b id="document-letters">0</b> chars</span>
                         </div>
                     </div>
                 </div>
 
-                <!-- Outline View -->
-                <div id="view-outline" class="view-container">
-                    <div class="view-header">
-                        <h2>Story Outline</h2>
-                        <div class="header-actions">
-                            <button class="btn-secondary" id="ai-regroup-outline" style="background: var(--accent-blue); color: white;">✨ Re-group & Check</button>
-                            <button class="btn-secondary" id="ai-suggest-scene">🔮 AI Suggest Next Scene</button>
-                            <button class="btn-primary" id="add-chapter-btn">+ Add Chapter</button>
-                            <button class="btn-primary" id="add-plot-point">+ Add Plot Point</button>
-                        </div>
-                    </div>
-                    <div class="outline-content" id="outline-list">
-                        <!-- Points go here -->
-                        <div class="empty-state">No plot points yet. Start mapping your story!</div>
-                    </div>
-                </div>
 
                 <!-- AI Ingest View -->
-                <div id="view-ingest" class="view-container">
-                    <div class="view-header">
-                        <h2>AI Story Ingest</h2>
-                    </div>
-                    <div class="ingest-space glass" style="padding: 30px; border-radius: 20px;">
+                <div id="view-ingest" class="view-container full-width">
+                    <div style="padding: 40px; width: 100%;">
+                        <div class="view-header">
+                            <h2>AI Story Ingest</h2>
+                        </div>
                         <p style="margin-bottom: 20px; color: var(--text-secondary);">Paste your notes, chapters, or ideas here. The AI will automatically extract characters, locations, and plot points.</p>
-                        <textarea id="ingest-text" placeholder="Paste your story text here..." style="width: 100%; height: 400px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 12px; color: white; padding: 20px; font-family: inherit; font-size: 1rem;"></textarea>
+                        <textarea id="ingest-text" placeholder="Paste your story text here..." style="width: 100%; height: 500px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 12px; color: white; padding: 20px; font-family: inherit; font-size: 1.1rem; line-height: 1.6;"></textarea>
                         <div class="header-actions" style="margin-top: 20px;">
                             <button class="btn-primary" id="start-ingest">🚀 Process Story Data</button>
                         </div>
-                    </div>
-                    <div id="ingest-results" style="margin-top: 30px;" class="hidden">
-                        <h3>Select Items to Import</h3>
-                        <p style="font-size: 0.8rem; color: #94a3b8; margin-bottom: 20px;">The AI suggested these updates based on your text. Check the ones you want to keep.</p>
-                        <div id="ingest-staging-area" style="max-height: 500px; overflow-y: auto; background: rgba(0,0,0,0.2); border-radius: 12px; padding: 20px; border: 1px solid var(--border-color);">
-                            <!-- staging items will appear here -->
-                        </div>
-                        <div style="margin-top: 20px;">
-                            <button class="btn-primary" id="confirm-ingest-btn">✅ Import Selected Items</button>
-                        </div>
-                    </div>
-                </div>
 
-                <!-- World Bible View -->
-                <div id="view-world" class="view-container">
-                    <div class="view-header">
-                        <h2>World Bible</h2>
-                        <button class="btn-primary" id="add-lore">+ Add Lore/Location</button>
-                    </div>
-                    <div class="world-grid" id="world-list">
-                        <div class="empty-state">The world is empty. Create your locations and lore.</div>
-                    </div>
-                </div>
-
-                <!-- Personas View -->
-                <div id="view-persona" class="view-container">
-                    <div class="view-header">
-                        <h2>Character Personas</h2>
-                        <div class="header-actions">
-                            <button class="btn-secondary" id="ai-generate-character">✨ AI Generate</button>
-                            <button class="btn-primary" id="add-character">+ New Character</button>
+                        <div id="ingest-results" style="margin-top: 30px;" class="hidden">
+                            <h3>Select Items to Import</h3>
+                            <p style="font-size: 0.8rem; color: #94a3b8; margin-bottom: 20px;">The AI suggested these updates based on your text. Check the ones you want to keep.</p>
+                            <div id="ingest-staging-area" style="max-height: 600px; overflow-y: auto; background: rgba(0,0,0,0.2); border-radius: 12px; padding: 20px; border: 1px solid var(--border-color);">
+                                <!-- staging items will appear here -->
+                            </div>
+                            <div style="margin-top: 20px;">
+                                <button class="btn-primary" id="confirm-ingest-btn">✅ Import Selected Items</button>
+                            </div>
                         </div>
                     </div>
-                    <div class="persona-grid" id="persona-list">
-                        <div class="empty-state">No characters yet. Bring your people to life.</div>
-                    </div>
                 </div>
 
-                <!-- Family Tree View -->
-                <div id="view-family" class="view-container">
-                    <div class="view-header">
-                        <h2>Linage & Family Trees</h2>
-                        <div class="header-actions">
-                            <button class="btn-secondary" id="reset-tree-view">🎯 Reset View</button>
-                            <button class="btn-primary" id="refresh-tree">Refresh Chart</button>
-                        </div>
-                    </div>
-                    <div id="family-tree-container" class="glass">
-                        <div class="empty-state">Family trees are automatically generated based on character relationships.</div>
-                    </div>
-                </div>
 
-                <!-- Timeline View -->
-                <div id="view-timeline" class="view-container">
-                    <div class="view-header">
-                        <h2>Story Timeline</h2>
-                        <button class="btn-primary" id="add-event">+ Add Event</button>
-                    </div>
-                    <div class="timeline-trail" id="timeline-list">
-                        <div class="empty-state">Time has no meaning yet. Add events to your story.</div>
-                    </div>
-                </div>
-
-                <!-- World Rules View -->
-                <div id="view-rules" class="view-container">
-                    <div class="view-header">
-                        <h2>World Rules & Mechanics</h2>
-                        <button class="btn-primary" id="add-rule">+ Add New Rule</button>
-                    </div>
-                    <div class="rules-grid" id="rules-list">
-                        <div class="empty-state">No rules defined. Set the laws of your universe.</div>
-                    </div>
-                </div>
 
                 <!-- Notations (Scratchpad) View -->
-                <div id="view-scratchpad" class="view-container">
-                    <div class="view-header">
-                        <h2>Notations & Scratchpad</h2>
-                    </div>
-                    <div class="scratchpad-area glass" style="flex-grow: 1; display: flex; flex-direction: column; overflow: hidden; border-radius: 20px;">
-                        <textarea id="scratchpad-editor" placeholder="Write down your laws, commandments, or random thoughts here..." style="flex-grow: 1; width: 100%; border: none; background: transparent; color: white; padding: 40px; font-family: 'Fira Code', monospace; line-height: 1.6; font-size: 1.1rem; resize: none; outline: none;"></textarea>
+                <div id="view-scratchpad" class="view-container full-width">
+                    <div style="padding: 40px; width: 100%; height: 100%; display: flex; flex-direction: column;">
+                        <div class="view-header">
+                            <h2>Notations & Scratchpad</h2>
+                        </div>
+                        <div class="scratchpad-area glass" style="flex-grow: 1; display: flex; flex-direction: column; overflow: hidden; border-radius: 20px;">
+                            <textarea id="scratchpad-editor" placeholder="Write down your laws, commandments, or random thoughts here..." style="flex-grow: 1; width: 100%; border: none; background: transparent; color: white; padding: 40px; font-family: 'Fira Code', monospace; line-height: 1.6; font-size: 1.1rem; resize: none; outline: none;"></textarea>
+                        </div>
                     </div>
                 </div>
 
                 <!-- AI Sidebar (Kept persistent or togglable) -->
-                <aside class="ai-suggestions">
-                    <div class="sidebar-tabs" style="display: flex; gap: 20px; border-bottom: 1px solid var(--border-color); margin-bottom: 20px; padding-bottom: 10px;">
-                        <h3 id="tab-ai" class="active" style="cursor: pointer; margin-bottom: 0;">AI Companion</h3>
-                        <h3 id="tab-ref" style="cursor: pointer; margin-bottom: 0; color: var(--text-secondary);">📚 Reference</h3>
-                    </div>
+                <aside class="ai-suggestions" style="width: 380px;">
+                    <h3 style="padding-bottom: 10px; border-bottom: 1px solid var(--border-color); margin-bottom: 20px;">🎬 AI Companion</h3>
                     
                     <div class="suggestion-list" id="suggestion-container" style="flex-grow: 1; overflow-y: auto;">
                         <div class="empty-state">
@@ -210,6 +133,7 @@
                              <div style="display: flex; gap: 5px; margin-bottom: 10px;">
                                 <button onclick="aiGetWordInfo('synonyms')" class="btn-secondary" style="flex: 1; font-size: 0.7rem;">Synonyms</button>
                                 <button onclick="aiGetWordInfo('antonyms')" class="btn-secondary" style="flex: 1; font-size: 0.7rem;">Antonyms</button>
+                                <button onclick="createBookmarkFromSelection()" class="btn-primary" style="flex: 1; font-size: 0.7rem;">🔖 Bookmark</button>
                              </div>
                         </div>
 
@@ -223,6 +147,7 @@
                     </div>
 
                     <div id="ai-chat-container" style="margin-top: 10px; border-top: 1px solid var(--border-color); padding-top: 15px;">
+                        <button id="plot-integrity-btn" class="btn-secondary" style="width: 100%; margin-bottom: 10px; border-color: var(--accent-blue); color: var(--accent-blue);">⚖️ Check Plot Integrity</button>
                         <div style="display: flex; flex-direction: column; gap: 10px;">
                             <textarea id="chat-input" placeholder="Ask a question or research topic..." style="width: 100%; height: 60px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: white; border-radius: 8px; padding: 10px; outline: none; resize: none;"></textarea>
                             <button id="send-chat" class="btn-primary" style="width: 100%;">💬 Ask AI</button>
@@ -234,6 +159,87 @@
 
                     <div class="reference-list hidden" id="reference-container">
                         <div class="empty-state">No lore items to reference.</div>
+                    </div>
+                </aside>
+
+                <aside id="outline-sidebar" class="sidebar-panel hidden">
+                    <div class="view-header" style="margin-bottom: 20px;">
+                        <h3>📊 Story Outline</h3>
+                        <div class="header-actions" style="display: flex; gap: 10px; margin-top: 10px;">
+                            <button class="btn-tool" id="ai-regroup-outline" title="Smart Grouping">🧠</button>
+                            <button class="btn-tool" id="ai-suggest-scene" title="Suggest Scene">🔮</button>
+                            <button class="btn-tool" id="add-chapter-btn" title="Add Chapter">+</button>
+                            <button class="btn-tool" id="add-plot-point" title="Add Point">➕</button>
+                        </div>
+                    </div>
+                    <div class="outline-content" id="outline-list" style="flex-grow: 1;">
+                        <!-- Points go here -->
+                    </div>
+                </aside>
+
+                <aside id="world-sidebar" class="sidebar-panel hidden">
+                    <div style="padding-bottom: 15px; border-bottom: 1px solid var(--border-color); margin-bottom: 20px;">
+                        <h3 id="sidebar-dynamic-title" style="margin: 0; font-family: 'Outfit', sans-serif; font-weight: 700; color: var(--text-primary);">Tool</h3>
+                    </div>
+
+                    <div id="world-sidebar-content" style="flex-grow: 1;">
+                        <!-- Personas Sub-view -->
+                        <div id="sub-personas" class="world-sub-view">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                <h4 style="margin: 0;">Personas</h4>
+                                <div style="display: flex; gap: 5px;">
+                                    <button class="btn-tool" id="add-character-btn-sw" title="New Character">➕</button>
+                                    <button class="btn-tool" id="ai-generate-character-sw" title="AI Generate">✨</button>
+                                </div>
+                            </div>
+                            <div class="persona-grid" id="persona-list"></div>
+                        </div>
+
+                        <!-- Lore Sub-view -->
+                        <div id="sub-lore" class="world-sub-view hidden">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                <h4 style="margin: 0;">World Lore</h4>
+                                <button class="btn-tool" id="add-lore-btn-sw" title="Add Lore">➕</button>
+                            </div>
+                            <div class="world-grid" id="world-list"></div>
+                        </div>
+
+                        <!-- Timeline Sub-view -->
+                        <div id="sub-timeline" class="world-sub-view hidden">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                <h4 style="margin: 0;">Timeline</h4>
+                                <button class="btn-tool" id="add-event-sw" onclick="createObject('timeline')" title="Add Event">➕</button>
+                            </div>
+                            <div id="timeline-list"></div>
+                        </div>
+
+                        <!-- Bookmarks Sub-view -->
+                        <div id="sub-bookmarks" class="world-sub-view hidden">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                <h4 style="margin: 0;">Bookmarks</h4>
+                            </div>
+                            <div id="bookmarks-list" class="sidebar-list"></div>
+                        </div>
+
+                        <!-- Rules Sub-view -->
+                        <div id="sub-rules" class="world-sub-view hidden">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                <h4 style="margin: 0;">World Rules</h4>
+                                <button class="btn-tool" id="add-rule-sw" onclick="createObject('rule')" title="Add Rule">➕</button>
+                            </div>
+                            <div id="rules-list"></div>
+                        </div>
+
+                        <!-- Family Tree Sub-view -->
+                        <div id="sub-family" class="world-sub-view hidden">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                <h4 style="margin: 0;">Family Lineage</h4>
+                                <button class="btn-tool" onclick="renderFamilyTree()" title="Refresh">🔄</button>
+                            </div>
+                            <div style="height: calc(100vh - 250px); background: rgba(0,0,0,0.2); border-radius: 8px; margin-top: 10px;" id="family-tree-container">
+                                <!-- vis network here -->
+                            </div>
+                        </div>
                     </div>
                 </aside>
             </section>
@@ -306,7 +312,7 @@
                 </div>
             </div>
 
-            <button class="btn-primary" id="save-settings" style="width: 100%; margin-top: 20px;">Save & Close</button>
+            <button class="btn-primary" onclick="saveSettings()" style="width: 100%; margin-top: 20px;">Save & Close</button>
         </div>
     </div>
 
@@ -334,8 +340,8 @@
                     <input type="text" id="picker-filename" placeholder="filename.db" style="width: 100%; background: rgba(0,0,0,0.5); border: 1px solid var(--border-color); color: white; padding: 8px; border-radius: 4px;">
                 </div>
                 <div style="display: flex; gap: 10px;">
-                    <button class="btn-secondary" id="cancel-picker" style="flex: 1">Cancel</button>
-                    <button class="btn-primary" id="confirm-picker" style="flex: 1">Confirm</button>
+                    <button class="btn-secondary" onclick="closeFilePicker()" style="flex: 1">Cancel</button>
+                    <button class="btn-primary" onclick="confirmPickerSelection()" style="flex: 1">Confirm</button>
                 </div>
             </div>
         </div>
@@ -423,8 +429,8 @@
             </div>
 
             <div style="display: flex; gap: 10px; margin-top: 30px;">
-                <button class="btn-primary" id="save-edit" style="flex-grow: 1;">Save Changes</button>
-                <button class="btn-secondary" id="close-edit">Cancel</button>
+                <button class="btn-primary" onclick="saveEdit()" style="flex-grow: 1;">Save Changes</button>
+                <button class="btn-secondary" onclick="closeEditModal()">Cancel</button>
             </div>
         </div>
     </div>
@@ -441,8 +447,8 @@
                 </select>
             </div>
             <div style="display: flex; gap: 10px; margin-top: 20px;">
-                <button class="btn-primary" id="confirm-merge">Confirm Merge</button>
-                <button class="btn-secondary" id="close-merge">Cancel</button>
+                <button class="btn-primary" onclick="confirmMerge()">Confirm Merge</button>
+                <button class="btn-secondary" onclick="closeMergeModal()">Cancel</button>
             </div>
         </div>
     </div>

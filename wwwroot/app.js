@@ -10,8 +10,11 @@ const state = {
     timeline: [],
     outline: [],
     rules: [],
+    bookmarks: [],
     scratchpad: "",
-    chapters: [{ id: 'ch1', title: 'Chapter 1', points: [] }],
+    chapters: [{ id: 'ch1', title: 'Chapter 1', content: "", points: [] }],
+    currentChapterId: 'ch1',
+    activeSidebar: null,
     proMode: false,
     settings: {
         aiProvider: localStorage.getItem('inkweaver_ai_provider') || 'gemini',
@@ -24,12 +27,22 @@ const state = {
 
 // Selectors
 const editor = document.getElementById('editor');
-const titleInput = document.querySelector('.title-input');
 const settingsBtn = document.getElementById('settings-btn');
 const settingsModal = document.getElementById('settings-modal');
-const saveSettings = document.getElementById('save-settings');
 const aiBrainstormBtn = document.getElementById('ai-brainstorm');
 const suggestionContainer = document.getElementById('suggestion-container');
+
+function openSettings() {
+    const modal = document.getElementById('settings-modal');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    document.getElementById('gemini-key').value = state.settings.geminiKey || "";
+    document.getElementById('ai-provider').value = state.settings.aiProvider;
+    document.getElementById('ollama-model').value = state.settings.ollamaModel;
+    refreshOllamaModels();
+}
+
+window.openSettings = openSettings;
 
 // Initialization
 function init() {
@@ -38,23 +51,38 @@ function init() {
     renderAllViews();
 }
 
-// Event Listeners
+function safeOn(id, event, cb) {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener(event, cb);
+}
+
 function setupEventListeners() {
     // Editor sync
     editor.addEventListener('input', () => {
         state.currentDraft.content = editor.innerHTML;
+        
+        // Dynamic Title Sync: First H1 becomes Chapter Title
+        const h1 = editor.querySelector('h1');
+        if (h1) {
+            const newTitle = h1.innerText.trim() || "Untitled Chapter";
+            if (newTitle !== state.currentDraft.title) {
+                state.currentDraft.title = newTitle;
+                const activeCh = state.chapters.find(c => c.id === state.currentChapterId);
+                if (activeCh) activeCh.title = newTitle;
+                
+                // Sync to Outlines Sidebar if open
+                const chOutline = document.querySelector(`.chapter-block[data-ch-id="${state.currentChapterId}"] .chapter-title-edit`);
+                if (chOutline) chOutline.value = newTitle;
+                
+                renderEditorNav();
+            }
+        }
+        
         saveAllData();
         updateWordCounts();
     });
 
-    titleInput.addEventListener('input', () => {
-        state.currentDraft.title = titleInput.value;
-        saveAllData();
-        updateWordCounts();
-    });
-
-    document.getElementById('editor').addEventListener('keyup', updateWordCounts);
-    document.getElementById('editor').addEventListener('mouseup', updateSelectionActions);
+    editor.addEventListener('mouseup', updateSelectionActions);
     document.addEventListener('selectionchange', updateSelectionActions);
 
     // Sidebar View Switching
@@ -62,119 +90,35 @@ function setupEventListeners() {
         li.addEventListener('click', () => {
             const view = li.getAttribute('data-view');
             switchView(view);
-            
-            document.querySelector('.nav-links li.active').classList.remove('active');
-            li.classList.add('active');
-
-            if (view === 'family') renderFamilyTree();
         });
     });
 
-    // New Item Buttons
-    document.getElementById('add-character').addEventListener('click', () => createObject('persona'));
-    document.getElementById('add-lore').addEventListener('click', () => createObject('world'));
-    document.getElementById('add-plot-point').addEventListener('click', addPlotPointToChapter);
-    document.getElementById('add-chapter-btn').addEventListener('click', addChapter);
-    document.getElementById('add-event').addEventListener('click', () => createObject('timeline'));
-    document.getElementById('add-rule').addEventListener('click', () => createObject('rule'));
-    document.getElementById('ai-suggest-scene').addEventListener('click', aiSuggestNextScene);
+    // Unified Sidebar Buttons
+    safeOn('add-character-btn-sw', 'click', () => createObject('persona'));
+    safeOn('ai-generate-character-sw', 'click', generateAICharacter);
+    safeOn('add-lore-btn-sw', 'click', () => createObject('world'));
+    safeOn('add-plot-point', 'click', addPlotPointToChapter);
+    safeOn('add-chapter-btn', 'click', addChapter);
+    safeOn('add-event', 'click', () => createObject('timeline'));
+    safeOn('add-rule', 'click', () => createObject('rule'));
+    safeOn('ai-regroup-outline', 'click', aiSmartGroupOutline);
+    safeOn('ai-suggest-scene', 'click', aiSuggestNextScene);
+    safeOn('consistency-btn', 'click', aiCheckPlotIntegrity);
+    safeOn('plot-integrity-btn', 'click', aiCheckPlotIntegrity);
 
-    document.getElementById('ai-generate-character').addEventListener('click', aiGenerateCharacter);
-    document.getElementById('analyze-btn').addEventListener('click', aiScanPlotHoles);
-    document.getElementById('toggle-pro-mode').addEventListener('click', toggleProMode);
-    document.getElementById('refresh-tree').addEventListener('click', renderFamilyTree);
-    document.getElementById('start-ingest').addEventListener('click', startAIIngest);
-    document.getElementById('ai-regroup-outline').addEventListener('click', aiSmartGroupOutline);
-    
     // Modals
-    settingsBtn.addEventListener('click', () => {
-        settingsModal.classList.remove('hidden');
-        document.getElementById('gemini-key').value = state.settings.geminiKey;
-        document.getElementById('ai-provider').value = state.settings.aiProvider;
-        document.getElementById('ollama-model').value = state.settings.ollamaModel;
-        refreshOllamaModels();
-    });
+    safeOn('refresh-models-btn', 'click', refreshOllamaModels);
+    safeOn('test-ollama', 'click', testOllamaConnection);
+    safeOn('ai-brainstorm', 'click', generateIdea);
+    safeOn('test-ollama', 'click', testOllamaConnection);
+    safeOn('ai-brainstorm', 'click', generateIdea);
 
-    saveSettings.addEventListener('click', () => {
-        state.settings.geminiKey = document.getElementById('gemini-key').value;
-        state.settings.aiProvider = document.getElementById('ai-provider').value;
-        
-        const manualModel = document.getElementById('ollama-model').value;
-        const selectModel = document.getElementById('ollama-model-select').value;
-        state.settings.ollamaModel = manualModel || selectModel;
-        
-        localStorage.setItem('inkweaver_gemini_key', state.settings.geminiKey);
-        localStorage.setItem('inkweaver_ai_provider', state.settings.aiProvider);
-        localStorage.setItem('inkweaver_ollama_model', state.settings.ollamaModel);
-        
-        settingsModal.classList.add('hidden');
-        updateAIStatus();
-    });
-
-    document.getElementById('refresh-models-btn').addEventListener('click', refreshOllamaModels);
-    document.getElementById('ollama-model-select').addEventListener('change', (e) => {
-        document.getElementById('ollama-model').value = e.target.value;
-    });
-
-    document.getElementById('test-ollama').addEventListener('click', testOllamaConnection);
-    aiBrainstormBtn.addEventListener('click', generateIdea);
-
-    // Edit Modal Listeners
-    document.getElementById('close-edit').addEventListener('click', () => document.getElementById('edit-modal').classList.add('hidden'));
-    document.getElementById('save-edit').addEventListener('click', saveEdit);
-    document.getElementById('delete-btn').addEventListener('click', deleteCurrentItem);
-    document.getElementById('merge-btn').addEventListener('click', openMergeModal);
-    document.getElementById('close-merge').addEventListener('click', () => document.getElementById('merge-modal').classList.add('hidden'));
-    document.getElementById('confirm-merge').addEventListener('click', confirmMerge);
+    // Edit Modal Listeners - Removed in favor of direct HTML onclicks for stability
     
-    document.getElementById('consistency-btn').addEventListener('click', aiCheckConsistency);
-
-    // Zoom/Pan logic removed as Vis-Network handles it natively
-
-    // Sidebar Tabs
-    document.getElementById('tab-ai').addEventListener('click', () => switchSidebarTab('ai'));
-    document.getElementById('tab-ref').addEventListener('click', () => switchSidebarTab('ref'));
-
-    // Dialogue tagging
-    editor.addEventListener('blur', processDialogueAttribution);
-
-    // Scratchpad sync
-    document.getElementById('scratchpad-editor').addEventListener('input', (e) => {
-        state.scratchpad = e.target.value;
-        saveAllData();
-    });
-
-    // File Interop
-    document.getElementById('select-project-btn').addEventListener('click', () => {
-        openFilePicker({ mode: 'open', type: 'project', title: 'Open Project (.ink)' });
-    });
-
-    document.getElementById('new-project-btn').addEventListener('click', () => {
-        openFilePicker({ mode: 'save', type: 'project', title: 'Create New Project' });
-    });
-
-    document.getElementById('select-db-btn').addEventListener('click', () => {
-        openFilePicker({ mode: 'open', type: 'db', title: 'Link Existing SQLite Database' });
-    });
-
-    document.getElementById('create-db-btn').addEventListener('click', () => {
-        openFilePicker({ mode: 'save', type: 'db', title: 'Create New SQLite Database' });
-    });
-
-    // Picker UI Events
-    document.getElementById('close-picker').addEventListener('click', closeFilePicker);
-    document.getElementById('cancel-picker').addEventListener('click', closeFilePicker);
-    document.getElementById('picker-up-btn').addEventListener('click', pickerNavigateUp);
-    document.getElementById('picker-home-btn').addEventListener('click', () => {
-        window.chrome.webview.postMessage("get_user_home");
-    });
-    document.getElementById('picker-drives-btn').addEventListener('click', () => {
-        window.chrome.webview.postMessage("list_dir|DRIVES");
-    });
-    document.getElementById('confirm-picker').addEventListener('click', confirmPickerSelection);
-
-    document.getElementById('send-chat').addEventListener('click', handleAIChat);
-    document.getElementById('chat-input').addEventListener('keydown', (e) => {
+    // Misc
+    safeOn('chapter-select', 'change', (e) => switchToChapter(e.target.value));
+    safeOn('send-chat', 'click', handleAIChat);
+    safeOn('chat-input', 'keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             handleAIChat();
@@ -183,6 +127,41 @@ function setupEventListeners() {
 
     if (window.chrome?.webview) {
         window.chrome.webview.addEventListener('message', handleNativeMessage);
+    }
+
+    // Scratchpad sync
+    safeOn('scratchpad-editor', 'input', (e) => {
+        state.scratchpad = e.target.value;
+        saveAllData();
+    });
+
+    // File Interop / DB
+    safeOn('select-project-btn', 'click', () => openFilePicker({ mode: 'open', type: 'project', title: 'Open Project (.ink)' }));
+    safeOn('new-project-btn', 'click', () => openFilePicker({ mode: 'save', type: 'project', title: 'Create New Project' }));
+    safeOn('select-db-btn', 'click', () => openFilePicker({ mode: 'open', type: 'db', title: 'Link Existing SQLite Database' }));
+    safeOn('create-db-btn', 'click', () => openFilePicker({ mode: 'save', type: 'db', title: 'Create New SQLite Database' }));
+    
+    // Picker UI
+    safeOn('close-picker', 'click', closeFilePicker);
+    safeOn('cancel-picker', 'click', closeFilePicker);
+    safeOn('picker-up-btn', 'click', () => window.chrome.webview.postMessage("list_dir|UP"));
+    safeOn('picker-home-btn', 'click', () => window.chrome.webview.postMessage("get_user_home"));
+    safeOn('picker-drives-btn', 'click', () => window.chrome.webview.postMessage("list_dir|DRIVES"));
+    // Nuclear Full Screen on First Click (Bypass Security Restrictions)
+    document.addEventListener('click', () => {
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().catch(e => console.warn("Fullscreen auto-trigger blocked: ", e));
+        }
+    }, { once: true });
+
+    // Native Shell Full Screen on Load (with slight delay for shell readiness)
+    if (window.chrome?.webview) {
+        setTimeout(() => {
+            window.chrome.webview.postMessage("window_state|fullscreen");
+            window.chrome.webview.postMessage("window_maximize");
+            window.chrome.webview.postMessage("maximize");
+            window.chrome.webview.postMessage("window_state|maximized");
+        }, 300); // 300ms for safety
     }
 }
 
@@ -423,24 +402,133 @@ async function refreshOllamaModels() {
 
 // View Management
 function switchView(viewId) {
+    const aiSidebar = document.querySelector('.ai-suggestions');
+    const outlineSidebar = document.getElementById('outline-sidebar');
+    const worldSidebar = document.getElementById('world-sidebar');
+
+    const isTogglingOff = (state.activeSidebar === viewId) && viewId !== 'editor';
+
+    if (isTogglingOff) {
+        // Absolute Force-Retraction: Target DOM directly to ensure no CSS can override this
+        aiSidebar.classList.remove('hidden');
+        aiSidebar.style.display = 'flex';
+        
+        outlineSidebar.classList.add('hidden');
+        outlineSidebar.style.setProperty('display', 'none', 'important');
+        
+        worldSidebar.classList.add('hidden');
+        worldSidebar.style.setProperty('display', 'none', 'important');
+        
+        document.querySelectorAll('.nav-links li').forEach(li => li.classList.remove('active'));
+        const editorNav = document.querySelector('[data-view="editor"]');
+        if (editorNav) editorNav.classList.add('active');
+        
+        state.activeSidebar = null;
+        return;
+    }
+
+    // Default Reset Sequence
+    aiSidebar.style.display = 'flex';
+    aiSidebar.classList.remove('hidden');
+    
+    outlineSidebar.style.display = 'none';
+    outlineSidebar.classList.add('hidden');
+    
+    worldSidebar.style.display = 'none';
+    worldSidebar.classList.add('hidden');
+
+    const isSidebarView = ['outline', 'world', 'persona', 'family', 'timeline', 'rules'].includes(viewId);
+    state.activeSidebar = isSidebarView ? viewId : null;
+
+    if (isSidebarView) {
+        aiSidebar.classList.add('hidden');
+        aiSidebar.style.display = 'none';
+        
+        if (viewId === 'outline') {
+            outlineSidebar.classList.remove('hidden');
+            outlineSidebar.style.display = 'flex';
+            renderOutline();
+        } else {
+            worldSidebar.classList.remove('hidden');
+            worldSidebar.style.display = 'flex';
+            const tabMap = { 
+                'persona': { tab: 'personas', title: '🎭 Personas' }, 
+                'world': { tab: 'lore', title: '🌍 World Bible' }, 
+                'family': { tab: 'family', title: '🌳 Family Tree' },
+                'timeline': { tab: 'timeline', title: '⏳ Story Timeline' },
+                'rules': { tab: 'rules', title: '🏛️ World Rules' },
+                'bookmarks': { tab: 'bookmarks', title: '🔖 Bookmarks' }
+            };
+            const config = tabMap[viewId] || { tab: 'personas', title: '🎭 Personas' };
+            
+            // Update the sidebar header dynamically
+            const headerTitle = document.getElementById('sidebar-dynamic-title');
+            if (headerTitle) headerTitle.innerText = config.title;
+            
+            switchWorldTab(config.tab);
+        }
+        
+        // Force main view to editor
+        state.currentView = 'editor';
+        document.querySelectorAll('.view-container').forEach(v => v.classList.remove('active'));
+        document.getElementById('view-editor').classList.add('active');
+        
+        // Highlight correct nav
+        const allNavs = document.querySelectorAll('.nav-links li');
+        allNavs.forEach(li => li.classList.remove('active'));
+        const targetNav = document.querySelector(`[data-view="${viewId}"]`);
+        if (targetNav) targetNav.classList.add('active');
+        return;
+    }
+
     state.currentView = viewId;
     document.querySelectorAll('.view-container').forEach(v => v.classList.remove('active'));
     
+    // Hide all sidebars for 'true' full-page views
+    if (['ingest', 'scratchpad'].includes(viewId)) {
+        aiSidebar.classList.add('hidden');
+        outlineSidebar.classList.add('hidden');
+        worldSidebar.classList.add('hidden');
+    }
+
     const target = document.getElementById(`view-${viewId}`);
     if (target) {
         target.classList.add('active');
+        if (viewId === 'family') renderFamilyTree();
     }
 }
 
+function switchWorldTab(tab) {
+    document.querySelectorAll('.world-sub-view').forEach(v => v.classList.add('hidden'));
+    const target = document.getElementById(`sub-${tab}`);
+    if (target) target.classList.remove('hidden');
+    
+    if (tab === 'personas') renderPersonas();
+    if (tab === 'lore') renderWorld();
+    if (tab === 'timeline') renderTimeline();
+    if (tab === 'rules') renderRules();
+    if (tab === 'family') renderFamilyTree();
+    if (tab === 'bookmarks') renderBookmarks();
+}
+
+window.switchWorldTab = switchWorldTab;
+
 // Data Handling
 function saveAllData() {
+    // Sync current draft to current chapter in array before saving
+    const ch = state.chapters.find(c => c.id === state.currentChapterId);
+    if (ch) {
+        ch.content = editor.innerHTML || "";
+    }
+
     const fullData = {
-        currentDraft: state.currentDraft,
+        currentChapterId: state.currentChapterId,
         personas: state.personas,
         worldBible: state.worldBible,
         timeline: state.timeline,
         chapters: state.chapters,
         rules: state.rules,
+        bookmarks: state.bookmarks,
         scratchpad: state.scratchpad
     };
 
@@ -475,19 +563,26 @@ function loadAllData() {
 }
 
 function applyProjectData(data) {
-    state.currentDraft = data.currentDraft || { title: "", content: "" };
     state.personas = data.personas || [];
     state.worldBible = data.worldBible || [];
     state.timeline = data.timeline || [];
-    state.chapters = data.chapters || [{ id: 'ch1', title: 'Chapter 1', points: [] }];
+    state.chapters = data.chapters || [{ id: 'ch1', title: 'Chapter 1', content: "", points: [] }];
+    state.currentChapterId = data.currentChapterId || state.chapters[0].id;
+    
+    // Force editor to match the current chapter from the array
+    const activeCh = state.chapters.find(c => c.id === state.currentChapterId) || state.chapters[0];
+    state.currentChapterId = activeCh.id;
+    state.currentDraft = { title: activeCh.title, content: activeCh.content || "" };
+    
     state.rules = data.rules || [];
+    state.bookmarks = data.bookmarks || [];
     state.scratchpad = data.scratchpad || "";
 
     // Apply to UI
     editor.innerHTML = state.currentDraft.content || "";
-    titleInput.value = state.currentDraft.title || "";
     document.getElementById('scratchpad-editor').value = state.scratchpad;
     renderAllViews();
+    renderEditorNav();
     updateWordCounts();
 }
 
@@ -533,8 +628,111 @@ function renderAllViews() {
     renderOutline();
     renderTimeline();
     renderRules();
+    renderBookmarks();
     updateAIStatus();
 }
+
+function createBookmarkFromSelection() {
+    const selection = window.getSelection();
+    if (!selection.rangeCount) return;
+    
+    const range = selection.getRangeAt(0);
+    const id = "bm_" + Date.now();
+    const name = prompt("Bookmark Name:", "Important Point") || "Bookmark";
+    
+    // Create Anchor Span
+    const span = document.createElement('span');
+    span.id = id;
+    span.className = "bookmark-anchor";
+    span.innerHTML = "🔖"; // Visual indicator in text
+    span.contentEditable = false; // Don't let user type inside it easily
+    
+    range.insertNode(span);
+    
+    state.bookmarks.push({
+        id: id,
+        name: name,
+        chapterId: state.currentChapterId
+    });
+    
+    saveAllData();
+    renderBookmarks();
+    
+    // Proactive UI: Switch to bookmarks view to show the user where it went
+    switchWorldTab('bookmarks');
+    const worldSidebar = document.getElementById('world-sidebar');
+    if (worldSidebar.classList.contains('hidden')) {
+        switchView('world');
+    }
+
+    addSuggestion(`🔖 Bookmark "${name}" created.`, "idea");
+}
+
+function renderBookmarks() {
+    const container = document.getElementById('bookmarks-list');
+    if (!container) return;
+    
+    if (state.bookmarks.length === 0) {
+        container.innerHTML = '<div class="empty-state">No bookmarks set. Highlight text and click 🔖 in selection tools.</div>';
+        return;
+    }
+    
+    container.innerHTML = state.bookmarks.map(bm => {
+        const chapter = state.chapters.find(c => c.id === bm.chapterId);
+        return `
+            <div class="sidebar-item-block" onclick="jumpToBookmark('${bm.id}')" style="cursor: pointer;">
+                <div class="sidebar-item-header">
+                    <div class="sidebar-item-icon">🔖</div>
+                    <div class="sidebar-item-content">
+                        <div class="sidebar-item-name">${bm.name}</div>
+                        <div class="sidebar-item-sub">${chapter ? chapter.title : 'External'}</div>
+                    </div>
+                    <div class="sidebar-item-actions">
+                        <button class="btn-mini" onclick="event.stopPropagation(); deleteBookmark('${bm.id}')">×</button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function jumpToBookmark(id) {
+    const bm = state.bookmarks.find(b => b.id === id);
+    if (!bm) return;
+    
+    // 1. Switch chapter if needed
+    if (bm.chapterId !== state.currentChapterId) {
+        switchToChapter(bm.chapterId);
+    }
+    
+    // 2. Scroll to anchor
+    setTimeout(() => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // Flash effect
+            el.style.transition = "all 0.5s ease";
+            el.style.transform = "scale(2.5)";
+            setTimeout(() => el.style.transform = "scale(1)", 500);
+        } else {
+            addSuggestion("⚠️ Bookmark anchor not found in this chapter's text.", "error");
+        }
+    }, 100);
+}
+
+function deleteBookmark(id) {
+    state.bookmarks = state.bookmarks.filter(b => b.id !== id);
+    // Also remove from DOM if it exists in current view
+    const el = document.getElementById(id);
+    if (el) el.remove();
+    
+    saveAllData();
+    renderBookmarks();
+}
+
+window.createBookmarkFromSelection = createBookmarkFromSelection;
+window.jumpToBookmark = jumpToBookmark;
+window.deleteBookmark = deleteBookmark;
 
 function renderPersonas() {
     const container = document.getElementById('persona-list');
@@ -543,12 +741,17 @@ function renderPersonas() {
         return;
     }
     container.innerHTML = state.personas.map(p => `
-        <div class="persona-card" onclick="editPersona(${p.id})">
-            <div class="persona-avatar">👤</div>
-            <div class="persona-name">${p.name}</div>
-            <div class="persona-role">${p.role}</div>
-            <div class="persona-trait-tags">
-                ${p.traits.map(t => `<span class="trait-tag">${t}</span>`).join('')}
+        <div class="sidebar-item-block">
+            <div class="sidebar-item-header">
+                <div class="sidebar-item-icon">👤</div>
+                <div class="sidebar-item-content">
+                    <div class="sidebar-item-name" contenteditable="true" onblur="updateItemField('personas', ${p.id}, 'name', this.innerText)">${p.name}</div>
+                    <div class="sidebar-item-sub" contenteditable="true" onblur="updateItemField('personas', ${p.id}, 'role', this.innerText)">${p.role}</div>
+                </div>
+                <div class="sidebar-item-actions">
+                    <button class="btn-mini" onclick="editPersona(${p.id})">⚙️</button>
+                    <button class="btn-mini" onclick="deleteItem('personas', ${p.id})">×</button>
+                </div>
             </div>
         </div>
     `).join('');
@@ -557,14 +760,22 @@ function renderPersonas() {
 function renderWorld() {
     const container = document.getElementById('world-list');
     if (state.worldBible.length === 0) {
-        container.innerHTML = '<div class="empty-state">The world is empty. Create your locations and lore.</div>';
+        container.innerHTML = '<div class="empty-state">The world is empty. Create lore.</div>';
         return;
     }
     container.innerHTML = state.worldBible.map(w => `
-        <div class="persona-card" onclick="editWorld(${w.id})">
-            <div class="persona-avatar">🌍</div>
-            <div class="persona-name">${w.name}</div>
-            <p style="font-size: 0.8rem; color: #94a3b8;">${w.description || 'No description yet.'}</p>
+        <div class="sidebar-item-block">
+            <div class="sidebar-item-header">
+                <div class="sidebar-item-icon">🌍</div>
+                <div class="sidebar-item-content">
+                    <div class="sidebar-item-name" contenteditable="true" onblur="updateItemField('worldBible', ${w.id}, 'name', this.innerText)">${w.name}</div>
+                    <div class="sidebar-item-sub" contenteditable="true" onblur="updateItemField('worldBible', ${w.id}, 'description', this.innerText)">${w.description || ''}</div>
+                </div>
+                <div class="sidebar-item-actions">
+                    <button class="btn-mini" onclick="editWorld(${w.id})">⚙️</button>
+                    <button class="btn-mini" onclick="deleteItem('worldBible', ${w.id})">×</button>
+                </div>
+            </div>
         </div>
     `).join('');
 }
@@ -771,10 +982,10 @@ function renderOutline() {
     if (!state.chapters) state.chapters = [{ id: 'ch1', title: 'Chapter 1', points: [] }];
     
     container.innerHTML = state.chapters.map((ch, chIdx) => `
-        <div class="chapter-block" data-ch-id="${ch.id}">
+        <div class="chapter-block ${ch.id === state.currentChapterId ? 'active' : ''}" data-ch-id="${ch.id}" onclick="switchToChapter('${ch.id}')" style="cursor: pointer;">
             <div class="chapter-header">
-                <input type="text" class="chapter-title-edit" value="${ch.title}" onchange="updateChapterTitle('${ch.id}', this.value)">
-                <button onclick="deleteChapter('${ch.id}')" class="btn-mini">🗑️</button>
+                <input type="text" class="chapter-title-edit" value="${ch.title}" onchange="updateChapterTitle('${ch.id}', this.value)" onclick="event.stopPropagation()">
+                <button onclick="event.stopPropagation(); deleteChapter('${ch.id}')" class="btn-mini">🗑️</button>
             </div>
             <div class="plot-points-container" ondrop="drop(event, '${ch.id}')" ondragover="allowDrop(event)">
                 ${ch.points.length === 0 ? '<div class="empty-drop">Drop points here...</div>' : ch.points.map((p, pIdx) => `
@@ -833,6 +1044,12 @@ function updateChapterTitle(id, val) {
     const ch = state.chapters.find(c => c.id === id);
     if (ch) ch.title = val;
     saveAllData();
+    renderEditorNav();
+    
+    // If we're editing the title of the CURRENTLY active chapter in the editor, update the internal state
+    if (id === state.currentChapterId) {
+        state.currentDraft.title = val;
+    }
 }
 
 function addPlotPointToChapter() {
@@ -1023,30 +1240,66 @@ async function aiTagDialogue() {
 
 function renderTimeline() {
     const container = document.getElementById('timeline-list');
-    if (state.timeline.length === 0) return;
+    if (!container) return;
+    if (state.timeline.length === 0) {
+        container.innerHTML = '<div class="empty-state">No events yet.</div>';
+        return;
+    }
     container.innerHTML = state.timeline.map(t => `
-        <div class="plot-point">
-            <small>${t.date}</small>
-            <div>${t.event}</div>
+        <div class="sidebar-item-block">
+            <div class="sidebar-item-header">
+                <div class="sidebar-item-icon">📅</div>
+                <div class="sidebar-item-content">
+                    <div class="sidebar-item-name" contenteditable="true" onblur="updateItemField('timeline', ${t.id}, 'date', this.innerText)">${t.date}</div>
+                    <div class="sidebar-item-sub" contenteditable="true" onblur="updateItemField('timeline', ${t.id}, 'event', this.innerText)">${t.event}</div>
+                </div>
+                <div class="sidebar-item-actions">
+                    <button class="btn-mini" onclick="deleteItem('timeline', ${t.id})">×</button>
+                </div>
+            </div>
         </div>
     `).join('');
 }
 
 function renderRules() {
     const container = document.getElementById('rules-list');
+    if (!container) return;
     if (state.rules.length === 0) {
-        container.innerHTML = '<div class="empty-state">No rules defined. Set the laws of your universe.</div>';
+        container.innerHTML = '<div class="empty-state">No rules defined.</div>';
         return;
     }
     container.innerHTML = state.rules.map(r => `
-        <div class="persona-card" onclick="editRule(${r.id})">
-            <div class="persona-avatar">📜</div>
-            <div class="persona-name">${r.name}</div>
-            <div class="persona-role" style="color: var(--accent-blue)">${r.category}</div>
-            <p style="font-size: 0.8rem; color: #94a3b8; margin-top: 10px;">${r.interpretation}</p>
+        <div class="sidebar-item-block">
+            <div class="sidebar-item-header">
+                <div class="sidebar-item-icon">🏛️</div>
+                <div class="sidebar-item-content">
+                    <div class="sidebar-item-name" contenteditable="true" onblur="updateItemField('rules', ${r.id}, 'name', this.innerText)">${r.name}</div>
+                    <div class="sidebar-item-sub" contenteditable="true" onblur="updateItemField('rules', ${r.id}, 'interpretation', this.innerText)">${r.interpretation}</div>
+                </div>
+                <div class="sidebar-item-actions">
+                    <button class="btn-mini" onclick="editRule(${r.id})">⚙️</button>
+                    <button class="btn-mini" onclick="deleteItem('rules', ${r.id})">×</button>
+                </div>
+            </div>
         </div>
     `).join('');
 }
+
+window.updateItemField = (store, id, field, value) => {
+    const list = state[store];
+    const item = list.find(i => i.id == id);
+    if (item) {
+        item[field] = value;
+        saveAllData();
+    }
+};
+
+window.deleteItem = (store, id) => {
+    if (!confirm("Delete this item?")) return;
+    state[store] = state[store].filter(i => i.id != id);
+    saveAllData();
+    renderAllViews();
+};
 
 // Editing System
 let currentEditingItem = null;
@@ -1185,9 +1438,12 @@ function deleteCurrentItem() {
     
     if (currentEditingType === 'persona') {
         state.personas = state.personas.filter(p => p.id !== currentEditingItem.id);
+    } else if (currentEditingType === 'world') {
+        state.worldBible = state.worldBible.filter(w => w.id !== currentEditingItem.id);
     } else if (currentEditingType === 'rule') {
         state.rules = state.rules.filter(r => r.id !== currentEditingItem.id);
     } else {
+        // Fallback for any other unhandled types, or if 'world' was previously caught here
         state.worldBible = state.worldBible.filter(w => w.id !== currentEditingItem.id);
     }
     
@@ -1787,6 +2043,23 @@ function updateMarkdown() {
     document.getElementById('markdown-preview').innerHTML = marked.parse(rawText);
 }
 
+window.toggleHeading = (tagName) => {
+    editor.focus();
+    // Check if current block is already the tag, if so, toggle back to div/p
+    const selection = window.getSelection();
+    if (!selection.rangeCount) return;
+    
+    let parent = selection.getRangeAt(0).commonAncestorContainer;
+    if (parent.nodeType !== 1) parent = parent.parentNode;
+    
+    const isCurrent = parent.closest(tagName);
+    if (isCurrent) {
+        document.execCommand('formatBlock', false, 'div');
+    } else {
+        document.execCommand('formatBlock', false, tagName);
+    }
+};
+
 window.insertMarkdown = (syntax) => {
     editor.focus();
     document.execCommand('insertText', false, syntax);
@@ -1947,6 +2220,142 @@ window.replaceSelectionWith = (newText) => {
     updateWordCounts();
 };
 
+function renderEditorNav() {
+    const select = document.getElementById('chapter-select');
+    if (!select) return;
+    select.innerHTML = "";
+    state.chapters.forEach(ch => {
+        const opt = document.createElement('option');
+        opt.value = ch.id;
+        opt.innerText = ch.title;
+        if (state.currentChapterId === ch.id) opt.selected = true;
+        select.appendChild(opt);
+    });
+}
+
+function switchToChapter(id) {
+    if (!id) return;
+    
+    // 1. Save current state to the chapter we're LEAVING
+    const currentCh = state.chapters.find(c => c.id === state.currentChapterId);
+    if (currentCh) {
+        currentCh.content = editor.innerHTML || "";
+        currentCh.title = titleInput.value || "";
+    }
+
+    // 2. Load the chapter we're ENTERING
+    const nextCh = state.chapters.find(c => c.id === id);
+    if (nextCh) {
+        state.currentChapterId = id;
+        state.currentDraft.title = nextCh.title || "Untitled Chapter";
+        state.currentDraft.content = nextCh.content || "";
+        
+        // Push to DOM
+        editor.innerHTML = state.currentDraft.content;
+        
+        // Update Analytics & UI
+        renderEditorNav();
+        updateWordCounts();
+        saveAllData();
+
+        // Jump to top
+        titleInput.focus();
+        titleInput.scrollIntoView({ behavior: 'smooth' });
+    } else {
+        console.error("Critical: Could not find chapter with ID", id);
+    }
+}
+
+async function aiCheckPlotIntegrity() {
+    addSuggestion("⚖️ Analyzing Project Integrity & Plot Holes...", "loading");
+    try {
+        const fullOutline = state.chapters.map(ch => ch.title + ": " + ch.points.map(p => p.content).join(", ")).join("\n");
+        const allContext = getProjectContext();
+        
+        const prompt = `
+            FULL PROJECT CONTEXT:
+            ${allContext}
+            
+            OUTLINE SO FAR:
+            ${fullOutline}
+            
+            TASK: Identify "Open Ends", "Unresolved Questions," and "Plot Holes" in this story. 
+            Look for characters who vanished, plot threads that stopped without resolution, or logical contradictions.
+            Return a structured list of actionable items.
+        `;
+        const response = await callAI(prompt);
+        removeLoading();
+        addSuggestion("<b>Story Integrity Report:</b><br>" + response, "idea");
+    } catch (err) {
+        removeLoading();
+        addSuggestion(`❌ Integrity Scan Error: ${err.message}`, "error");
+    }
+}
+
+document.getElementById('plot-integrity-btn').addEventListener('click', aiCheckPlotIntegrity);
+
+// Export all critical editing functions to global window for HTML onclick access
+function closeEditModal() {
+    document.getElementById('edit-modal').classList.add('hidden');
+    currentEditingItem = null;
+    currentEditingType = null;
+}
+
+window.saveEdit = saveEdit;
+window.closeEditModal = closeEditModal;
+window.deleteCurrentItem = deleteCurrentItem;
+window.openMergeModal = openMergeModal;
+window.editPersona = editPersona;
+window.editWorld = editWorld;
+window.editRule = editRule;
+window.addChapter = addChapter;
+window.deleteChapter = deleteChapter;
+window.confirmPickerSelection = confirmPickerSelection;
+window.confirmMerge = confirmMerge;
+window.saveSettings = function() {
+    state.settings.geminiKey = document.getElementById('gemini-key').value;
+    state.settings.aiProvider = document.getElementById('ai-provider').value;
+    state.settings.ollamaModel = document.getElementById('ollama-model').value || document.getElementById('ollama-model-select').value;
+    localStorage.setItem('inkweaver_gemini_key', state.settings.geminiKey);
+    localStorage.setItem('inkweaver_ai_provider', state.settings.aiProvider);
+    localStorage.setItem('inkweaver_ollama_model', state.settings.ollamaModel);
+    document.getElementById('settings-modal').classList.add('hidden');
+    updateAIStatus();
+};
+window.closeMergeModal = function() {
+    document.getElementById('merge-modal').classList.add('hidden');
+};
+window.closeFilePicker = closeFilePicker;
+
+function toggleFullScreen() {
+    if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(err => {
+            console.error(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+        });
+        if (window.chrome?.webview) {
+            window.chrome.webview.postMessage("window_state|fullscreen");
+        }
+    } else {
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+        }
+        if (window.chrome?.webview) {
+            window.chrome.webview.postMessage("window_state|normal");
+        }
+    }
+}
+
+function updateAIStatus() {
+    const statusText = document.querySelector('.ai-status span');
+    if (!statusText) return;
+    const provider = state.settings.aiProvider === 'ollama' ? 'Ollama' : 'Gemini';
+    statusText.innerText = `AI Ready (${provider})`;
+}
+
+window.updateAIStatus = updateAIStatus;
+window.toggleFullScreen = toggleFullScreen;
+
 // Start
 init();
 updateWordCounts();
+renderEditorNav();
