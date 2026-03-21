@@ -642,6 +642,58 @@ h1, h2, h3 {
     background: rgba(239, 68, 68, 0.1);
 }
 
+.mistake-mark {
+    text-decoration: underline wavy #ef4444;
+    cursor: help;
+    transition: background 0.2s;
+    background: rgba(239, 68, 68, 0.05);
+    border-radius: 2px;
+}
+
+.mistake-mark:hover {
+    background: rgba(239, 68, 68, 0.15);
+}
+
+.correction-panel-item {
+    background: rgba(99, 102, 241, 0.1);
+    border: 1px solid var(--accent-blue);
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 15px;
+}
+
+.correction-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.correction-type {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    background: var(--accent-blue);
+    color: white;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.correction-diff {
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+.correction-diff del {
+    color: #ef4444;
+    text-decoration: line-through;
+}
+
+.correction-diff ins {
+    color: #10b981;
+    text-decoration: none;
+    font-weight: bold;
+}
+
 .plot-point.contradiction::after {
     content: '⚠️';
     position: absolute;

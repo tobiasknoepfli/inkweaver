@@ -21,7 +21,8 @@ const state = {
         geminiKey: localStorage.getItem('inkweaver_gemini_key') || '',
         ollamaModel: localStorage.getItem('inkweaver_ollama_model') || 'llama3',
         projectPath: localStorage.getItem('inkweaver_project_path') || '',
-        dbPath: localStorage.getItem('inkweaver_db_path') || ''
+        dbPath: localStorage.getItem('inkweaver_db_path') || '',
+        language: localStorage.getItem('inkweaver_language') || 'en-US'
     }
 };
 
@@ -39,6 +40,7 @@ function openSettings() {
     document.getElementById('gemini-key').value = state.settings.geminiKey || "";
     document.getElementById('ai-provider').value = state.settings.aiProvider;
     document.getElementById('ollama-model').value = state.settings.ollamaModel;
+    document.getElementById('project-language').value = state.settings.language || 'en-US';
     refreshOllamaModels();
 }
 
@@ -688,7 +690,7 @@ function renderBookmarks() {
                         <div class="sidebar-item-sub">${chapter ? chapter.title : 'External'}</div>
                     </div>
                     <div class="sidebar-item-actions">
-                        <button class="btn-mini" onclick="event.stopPropagation(); deleteBookmark('${bm.id}')">×</button>
+                        <button class="btn-mini" onclick="event.stopPropagation(); deleteBookmark('${bm.id}')" title="Permanently remove this bookmark">×</button>
                     </div>
                 </div>
             </div>
@@ -749,8 +751,8 @@ function renderPersonas() {
                     <div class="sidebar-item-sub" contenteditable="true" onblur="updateItemField('personas', ${p.id}, 'role', this.innerText)">${p.role}</div>
                 </div>
                 <div class="sidebar-item-actions">
-                    <button class="btn-mini" onclick="editPersona(${p.id})">⚙️</button>
-                    <button class="btn-mini" onclick="deleteItem('personas', ${p.id})">×</button>
+                    <button class="btn-mini" onclick="editPersona(${p.id})" title="Edit character profile and motivations">⚙️</button>
+                    <button class="btn-mini" onclick="deleteItem('personas', ${p.id})" title="Permanently delete this character">×</button>
                 </div>
             </div>
         </div>
@@ -772,8 +774,8 @@ function renderWorld() {
                     <div class="sidebar-item-sub" contenteditable="true" onblur="updateItemField('worldBible', ${w.id}, 'description', this.innerText)">${w.description || ''}</div>
                 </div>
                 <div class="sidebar-item-actions">
-                    <button class="btn-mini" onclick="editWorld(${w.id})">⚙️</button>
-                    <button class="btn-mini" onclick="deleteItem('worldBible', ${w.id})">×</button>
+                    <button class="btn-mini" onclick="editWorld(${w.id})" title="Edit world lore and details">⚙️</button>
+                    <button class="btn-mini" onclick="deleteItem('worldBible', ${w.id})" title="Permanently delete this entry">×</button>
                 </div>
             </div>
         </div>
@@ -985,7 +987,7 @@ function renderOutline() {
         <div class="chapter-block ${ch.id === state.currentChapterId ? 'active' : ''}" data-ch-id="${ch.id}" onclick="switchToChapter('${ch.id}')" style="cursor: pointer;">
             <div class="chapter-header">
                 <input type="text" class="chapter-title-edit" value="${ch.title}" onchange="updateChapterTitle('${ch.id}', this.value)" onclick="event.stopPropagation()">
-                <button onclick="event.stopPropagation(); deleteChapter('${ch.id}')" class="btn-mini">🗑️</button>
+                <button onclick="event.stopPropagation(); deleteChapter('${ch.id}')" class="btn-mini" title="Permanently delete this chapter and all its plot points">🗑️</button>
             </div>
             <div class="plot-points-container" ondrop="drop(event, '${ch.id}')" ondragover="allowDrop(event)">
                 ${ch.points.length === 0 ? '<div class="empty-drop">Drop points here...</div>' : ch.points.map((p, pIdx) => `
@@ -995,8 +997,8 @@ function renderOutline() {
                             ${p.isContradiction ? `<div class="contradiction-note">⚠️ ${p.contradictionNote}</div>` : ''}
                         </div>
                         <div style="display: flex; gap: 5px; align-items: center;">
-                            <button onclick="aiDraftScene('${ch.id}', ${pIdx})" class="btn-mini" title="Draft Prose">✍️</button>
-                            <button onclick="deletePlotPoint('${ch.id}', ${pIdx})" class="btn-mini">×</button>
+                            <button onclick="aiDraftScene('${ch.id}', ${pIdx})" class="btn-mini" title="Let the AI write the first draft of prose for this scene point">✍️</button>
+                            <button onclick="deletePlotPoint('${ch.id}', ${pIdx})" class="btn-mini" title="Remove this plot point">×</button>
                         </div>
                     </div>
                 `).join('')}
@@ -1254,7 +1256,7 @@ function renderTimeline() {
                     <div class="sidebar-item-sub" contenteditable="true" onblur="updateItemField('timeline', ${t.id}, 'event', this.innerText)">${t.event}</div>
                 </div>
                 <div class="sidebar-item-actions">
-                    <button class="btn-mini" onclick="deleteItem('timeline', ${t.id})">×</button>
+                    <button class="btn-mini" onclick="deleteItem('timeline', ${t.id})" title="Remove this event from the timeline">×</button>
                 </div>
             </div>
         </div>
@@ -1277,8 +1279,8 @@ function renderRules() {
                     <div class="sidebar-item-sub" contenteditable="true" onblur="updateItemField('rules', ${r.id}, 'interpretation', this.innerText)">${r.interpretation}</div>
                 </div>
                 <div class="sidebar-item-actions">
-                    <button class="btn-mini" onclick="editRule(${r.id})">⚙️</button>
-                    <button class="btn-mini" onclick="deleteItem('rules', ${r.id})">×</button>
+                    <button class="btn-mini" onclick="editRule(${r.id})" title="Modify the details of this world rule">⚙️</button>
+                    <button class="btn-mini" onclick="deleteItem('rules', ${r.id})" title="Delete this world rule">×</button>
                 </div>
             </div>
         </div>
@@ -1598,6 +1600,82 @@ async function aiScanPlotHoles() {
         addSuggestion(`❌ Analysis failed: ${err.message}`, "error");
     }
 }
+
+async function aiSyncTimelineFromDraft() {
+    addSuggestion("⏳ Analyzing manuscript for chronological events...", "loading");
+    
+    try {
+        const fullManuscript = state.chapters.map(ch => `CHAPTER: ${ch.title}\n${ch.content.replace(/<[^>]*>?/gm, '')}`).join("\n\n");
+        const scratchpad = state.scratchpad;
+        
+        const prompt = `
+            TASK: Extract a chronological timeline from the provided story manuscript and project notes.
+            Find every significant event that has a date, time, or relative timestamp mentioned (e.g., "Three years after the war", "1945", "Friday at midnight").
+
+            MANUSCRIPT & NOTES:
+            ${fullManuscript}
+            ${scratchpad}
+
+            RETURN: A JSON array of event objects.
+            FORMAT:
+            [
+              {
+                "date": "Date or relative time string",
+                "event": "Short description of what happened"
+              }
+            ]
+            
+            Return ONLY the JSON. Empty array [] if nothing found.
+        `;
+
+        const response = await callAI(prompt);
+        const jsonMatch = response.match(/\[[\s\S]*\]/);
+        if (!jsonMatch) throw new Error("AI failed to extract chronological data.");
+
+        const jsonStr = jsonMatch[0];
+        const newEvents = JSON.parse(jsonStr);
+        removeLoading();
+
+        if (newEvents.length === 0) {
+            addSuggestion("ℹ️ No specific dates or timed events found in your draft yet.", "idea");
+            return;
+        }
+
+        // Avoid adding exact duplicates if possible (simple check)
+        let addedCount = 0;
+        newEvents.forEach(e => {
+            const isDuplicate = state.timeline.some(old => 
+                old.date.trim().toLowerCase() === e.date.trim().toLowerCase() && 
+                old.event.trim().toLowerCase() === e.event.trim().toLowerCase()
+            );
+
+            if (!isDuplicate) {
+                state.timeline.push({
+                    id: Date.now() + Math.random(),
+                    date: e.date,
+                    event: e.event
+                });
+                addedCount++;
+            }
+        });
+
+        saveAllData();
+        renderTimeline();
+        addSuggestion(`📅 Timeline synced! Added <b>${addedCount}</b> new events to your story history.`, "idea");
+
+        // Proactive: switch to timeline view if it's not open
+        if (state.activeSidebar !== 'timeline') {
+            switchView('timeline');
+        }
+
+    } catch (err) {
+        removeLoading();
+        addSuggestion(`❌ Timeline Sync Error: ${err.message}`, "error");
+        console.error(err);
+    }
+}
+
+window.aiSyncTimelineFromDraft = aiSyncTimelineFromDraft;
 
 async function generateIdea() {
     if (state.settings.aiProvider === 'gemini' && !state.settings.geminiKey) {
@@ -2172,6 +2250,147 @@ async function aiCheckSelection() {
     }
 }
 
+async function aiCorrectSelection() {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0 || selection.toString().trim() === "") {
+        return alert("Please highlight the passage you want to proofread first.");
+    }
+
+    const range = selection.getRangeAt(0);
+    const selectedText = selection.toString();
+    
+    addSuggestion("🪄 Proofreading for spelling, phrasal verbs, and prepositions...", "loading");
+
+    try {
+        const langInfo = {
+            'en-US': 'American English',
+            'en-GB': 'British English',
+            'de-DE': 'German (Deutsch)'
+        }[state.settings.language || 'en-US'];
+
+        const prompt = `
+            TASK: Act as a senior book editor specializing in ${langInfo}. 
+            Identify errors in the following text segment in ${langInfo} related to:
+            - Spelling and Orthography (Strictly follow ${langInfo} standards)
+            - Phrasal Verb usage
+            - Preposition errors
+            - Grammar and Punctuation
+            - Word choice (clichés or awkward phrasing)
+
+            TEXT: "${selectedText}"
+            LANGUAGE: ${langInfo}
+
+            RETURN: A JSON array of mistake objects.
+            FORMAT:
+            [
+              {
+                "original": "misstake",
+                "corrected": "mistake",
+                "reason": "Spelling error",
+                "type": "spelling",
+                "offset": 0,
+                "length": 8
+              }
+            ]
+
+            CRITICAL: The 'offset' MUST be the exact character index within the provided text (0-indexed). 
+            If no mistakes are found, return an empty array [].
+            Only return the JSON. No conversational text.
+        `;
+
+        const response = await callAI(prompt);
+        const jsonMatch = response.match(/\[[\s\S]*\]/);
+        if (!jsonMatch) throw new Error("AI failed to return a valid correction list.");
+        
+        const mistakes = JSON.parse(jsonMatch[0]);
+        removeLoading();
+
+        if (mistakes.length === 0) {
+            addSuggestion("✅ No obvious errors found in this section. Great job!", "idea");
+            return;
+        }
+
+        // 1. Highlight in Editor
+        // Sort offsets descending so we don't invalidate indices as we insert HTML
+        const sortedMistakes = [...mistakes].sort((a,b) => b.offset - a.offset);
+        let htmlContent = selectedText;
+        
+        sortedMistakes.forEach(m => {
+            const before = htmlContent.substring(0, m.offset);
+            const target = htmlContent.substring(m.offset, m.offset + m.length);
+            const after = htmlContent.substring(m.offset + m.length);
+            htmlContent = before + `<span class="mistake-mark" data-orig="${m.original}" data-corr="${m.corrected}" title="Suggestion: ${m.corrected} (${m.reason})">${target}</span>` + after;
+        });
+
+        // Replace the selection with the marked-up version
+        const fragment = range.createContextualFragment(htmlContent);
+        range.deleteContents();
+        range.insertNode(fragment);
+
+        // 2. Show in Sidebar
+        let report = `<b>Found ${mistakes.length} suggested corrections:</b><br><br>`;
+        report += `<button id="fix-all-btn" onclick="applyAllCorrections()" class="btn-primary" style="width: 100%; margin-bottom: 20px; background: #10b981;">✅ Fix All Mistakes</button>`;
+        
+        mistakes.forEach((m, idx) => {
+            report += `
+                <div class="correction-panel-item" id="corr-item-${idx}">
+                    <div class="correction-header">
+                        <span class="correction-type">${m.type}</span>
+                        <small style="opacity: 0.6">${m.reason}</small>
+                    </div>
+                    <div class="correction-diff">
+                        <del>${m.original}</del> → <ins>${m.corrected}</ins>
+                    </div>
+                    <button onclick="applyOneCorrection('${m.corrected}', ${idx})" class="btn-secondary" style="font-size: 0.7rem; padding: 4px 10px; margin-top: 10px; width: 100%;">Apply Individual Fix</button>
+                </div>
+            `;
+        });
+        
+        addSuggestion(report, "idea");
+
+    } catch (err) {
+        removeLoading();
+        addSuggestion(`❌ Correction Error: ${err.message}`, "error");
+        console.error(err);
+    }
+}
+
+window.aiCorrectSelection = aiCorrectSelection;
+
+window.applyAllCorrections = function() {
+    const spans = document.querySelectorAll('.mistake-mark');
+    spans.forEach(span => {
+        const corr = span.getAttribute('data-corr');
+        if (corr) span.outerHTML = corr;
+    });
+    
+    // Disable all individual buttons
+    document.querySelectorAll('.correction-panel-item button').forEach(b => {
+        b.innerText = "✅ Applied";
+        b.disabled = true;
+    });
+    
+    const fixAll = document.getElementById('fix-all-btn');
+    if (fixAll) fixAll.style.display = 'none';
+};
+
+window.applyOneCorrection = function(correction, itemIdx) {
+    const spans = document.querySelectorAll('.mistake-mark');
+    for (let span of spans) {
+        if (span.getAttribute('data-corr') === correction) {
+            span.outerHTML = correction;
+            break;
+        }
+    }
+    
+    const card = document.getElementById(`corr-item-${itemIdx}`);
+    if (card) {
+        card.style.opacity = '0.5';
+        card.querySelector('button').innerText = "✅ Applied";
+        card.querySelector('button').disabled = true;
+    }
+};
+
 async function aiGetWordInfo(type) {
     const selection = window.getSelection().toString().trim();
     if (!selection) return;
@@ -2315,10 +2534,12 @@ window.confirmMerge = confirmMerge;
 window.saveSettings = function() {
     state.settings.geminiKey = document.getElementById('gemini-key').value;
     state.settings.aiProvider = document.getElementById('ai-provider').value;
+    state.settings.language = document.getElementById('project-language').value;
     state.settings.ollamaModel = document.getElementById('ollama-model').value || document.getElementById('ollama-model-select').value;
     localStorage.setItem('inkweaver_gemini_key', state.settings.geminiKey);
     localStorage.setItem('inkweaver_ai_provider', state.settings.aiProvider);
     localStorage.setItem('inkweaver_ollama_model', state.settings.ollamaModel);
+    localStorage.setItem('inkweaver_language', state.settings.language);
     document.getElementById('settings-modal').classList.add('hidden');
     updateAIStatus();
 };

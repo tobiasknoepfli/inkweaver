@@ -22,22 +22,22 @@
                 <span style="background: var(--primary-color); color: white; font-size: 0.6rem; padding: 2px 6px; border-radius: 4px; margin-left: 5px; vertical-align: middle;">v1.5.0</span>
             </div>
             <ul class="nav-links">
-                <li class="active" data-view="editor"><span>📝</span> Writing Space</li>
-                <li data-view="outline"><span>📊</span> Outlines</li>
-                <li data-view="world"><span>🌍</span> World Bible</li>
-                <li data-view="persona"><span>🎭</span> Personas</li>
-                <li data-view="family"><span>🌳</span> Family Tree</li>
-                <li data-view="timeline"><span>⏳</span> Timeline</li>
-                <li data-view="rules"><span>📜</span> World Rules</li>
-                <li data-view="ingest"><span>📥</span> AI Ingest</li>
-                <li data-view="scratchpad"><span>🗒️</span> Notations</li>
+                <li class="active" data-view="editor" title="Main editor for writing your story"><span>📝</span> Writing Space</li>
+                <li data-view="outline" title="Plan and view your book's structure and plot points"><span>📊</span> Outlines</li>
+                <li data-view="world" title="Manage your locations, lore, and world-building details"><span>🌍</span> World Bible</li>
+                <li data-view="persona" title="Detailed character profiles and motivations"><span>🎭</span> Personas</li>
+                <li data-view="family" title="Visualize character relationships and lineage"><span>🌳</span> Family Tree</li>
+                <li data-view="timeline" title="Track chronological events across your story"><span>⏳</span> Timeline</li>
+                <li data-view="rules" title="Document the laws of magic, physics, and society"><span>📜</span> World Rules</li>
+                <li data-view="ingest" title="Extract story data from existing notes or drafts"><span>📥</span> AI Ingest</li>
+                <li data-view="scratchpad" title="Your personal scratchpad for random ideas and notes"><span>🗒️</span> Notations</li>
             </ul>
             <div class="bottom-nav">
                 <div class="ai-status">
                     <div class="status-indicator online"></div>
                     <span>AI Ready (Gemini)</span>
                 </div>
-                <button id="settings-btn" onclick="openSettings()">⚙️ Settings</button>
+                <button id="settings-btn" onclick="openSettings()" title="Adjust application settings, AI providers, and project storage">⚙️ Settings</button>
             </div>
         </nav>
 
@@ -45,21 +45,22 @@
         <main class="content">
             <header class="content-header" style="height: auto; padding: 15px 40px; border-bottom: 2px solid var(--border-color); background: rgba(0,0,0,0.2);">
                 <div class="toolbar-actions" style="display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0;">
-                    <button class="btn-tool" onclick="document.execCommand('bold')"><b>B</b></button>
-                    <button class="btn-tool" onclick="document.execCommand('italic')"><i>I</i></button>
-                    <button class="btn-tool" onclick="toggleHeading('h1')">H1</button>
-                    <button class="btn-tool" onclick="toggleHeading('h2')">H2</button>
-                    <button class="btn-tool" onclick="insertMarkdown('> ')">Quote</button>
+                    <button class="btn-tool" onclick="document.execCommand('bold')" title="Make selected text bold"><b>B</b></button>
+                    <button class="btn-tool" onclick="document.execCommand('italic')" title="Make selected text italic"><i>I</i></button>
+                    <button class="btn-tool" onclick="toggleHeading('h1')" title="Convert current line to a large heading (H1)">H1</button>
+                    <button class="btn-tool" onclick="toggleHeading('h2')" title="Convert current line to a medium heading (H2)">H2</button>
+                    <button class="btn-tool" onclick="insertMarkdown('> ')" title="Format selection as a blockquote">Quote</button>
+                    <button class="btn-tool" onclick="aiCorrectSelection()" title="Check for spelling, grammar, phrasal verbs, and preposition errors">🪄</button>
                     <div style="width: 1px; height: 20px; background: var(--border-color); margin: 0 5px;"></div>
-                    <button class="btn-tool" onclick="aiRewriteSelection()" title="Rewrite Selection">✍️</button>
-                    <button class="btn-tool" onclick="aiCheckSelection()" title="Check Section">🔍</button>
-                    <button class="btn-tool" onclick="aiTagDialogue()" title="Tag Speakers">🎙️</button>
-                    <button class="btn-tool" onclick="createBookmarkFromSelection()" title="Add Bookmark">🔖</button>
+                    <button class="btn-tool" onclick="aiRewriteSelection()" title="Ask the AI to rewrite the selected passage in a different style">✍️</button>
+                    <button class="btn-tool" onclick="aiCheckSelection()" title="Verify facts, logic, and prose quality in the selection">🔍</button>
+                    <button class="btn-tool" onclick="aiTagDialogue()" title="Automatically identify and tag speakers in dialogue within the selection">🎙️</button>
+                    <button class="btn-tool" onclick="createBookmarkFromSelection()" title="Save current cursor position as a bookmark for quick reference in this chapter">🔖</button>
                 </div>
                 <div class="actions" style="display: flex; gap: 8px;">
-                    <button class="btn-secondary" id="export-btn" onclick="exportMarkdown()" style="padding: 6px 12px; font-size: 0.8rem;">📤 Export</button>
-                    <button class="btn-secondary" id="consistency-btn" style="background: #10b981; color: white; padding: 6px 12px; font-size: 0.8rem;">⚖️ Integrity</button>
-                    <button class="btn-primary" id="ai-brainstorm" style="padding: 6px 12px; font-size: 0.8rem;">✨ AI Idea</button>
+                    <button class="btn-secondary" id="export-btn" onclick="exportMarkdown()" style="padding: 6px 12px; font-size: 0.8rem;" title="Save your work as a Markdown file for external use">📤 Export</button>
+                    <button class="btn-secondary" id="consistency-btn" style="background: #10b981; color: white; padding: 6px 12px; font-size: 0.8rem;" title="Perform a deep scan for plot holes, logical errors, and unresolved story threads">⚖️ Integrity</button>
+                    <button class="btn-primary" id="ai-brainstorm" style="padding: 6px 12px; font-size: 0.8rem;" title="Generate fresh ideas, character names, or plot twists">✨ AI Idea</button>
                 </div>
             </header>
 
@@ -87,7 +88,7 @@
                         <p style="margin-bottom: 20px; color: var(--text-secondary);">Paste your notes, chapters, or ideas here. The AI will automatically extract characters, locations, and plot points.</p>
                         <textarea id="ingest-text" placeholder="Paste your story text here..." style="width: 100%; height: 500px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 12px; color: white; padding: 20px; font-family: inherit; font-size: 1.1rem; line-height: 1.6;"></textarea>
                         <div class="header-actions" style="margin-top: 20px;">
-                            <button class="btn-primary" id="start-ingest">🚀 Process Story Data</button>
+                            <button class="btn-primary" id="start-ingest" title="Analyze provided text to automatically extract and import story elements">🚀 Process Story Data</button>
                         </div>
 
                         <div id="ingest-results" style="margin-top: 30px;" class="hidden">
@@ -97,7 +98,7 @@
                                 <!-- staging items will appear here -->
                             </div>
                             <div style="margin-top: 20px;">
-                                <button class="btn-primary" id="confirm-ingest-btn">✅ Import Selected Items</button>
+                                <button class="btn-primary" id="confirm-ingest-btn" title="Apply the selected AI-extracted items to your project">✅ Import Selected Items</button>
                             </div>
                         </div>
                     </div>
@@ -139,18 +140,21 @@
 
                         <div id="passage-tools" class="hidden">
                             <small style="color: var(--accent-blue); margin-bottom: 5px; display: block;">Passage Actions</small>
-                            <div style="display: flex; gap: 5px;">
-                                <button onclick="aiRewriteSelection()" class="btn-secondary" style="flex: 1; font-size: 0.7rem;">Rewrite</button>
-                                <button onclick="aiCheckSelection()" class="btn-secondary" style="flex: 1; font-size: 0.7rem;">Check</button>
+                            <div style="display: flex; gap: 5px; flex-direction: column;">
+                                <div style="display: flex; gap: 5px;">
+                                    <button onclick="aiRewriteSelection()" class="btn-secondary" style="flex: 1; font-size: 0.7rem;">Rewrite</button>
+                                    <button onclick="aiCheckSelection()" class="btn-secondary" style="flex: 1; font-size: 0.7rem;">Check</button>
+                                </div>
+                                <button onclick="aiCorrectSelection()" class="btn-primary" style="width: 100%; font-size: 0.7rem; margin-top: 5px;">🪄 Proofread & Correct</button>
                             </div>
                         </div>
                     </div>
 
                     <div id="ai-chat-container" style="margin-top: 10px; border-top: 1px solid var(--border-color); padding-top: 15px;">
-                        <button id="plot-integrity-btn" class="btn-secondary" style="width: 100%; margin-bottom: 10px; border-color: var(--accent-blue); color: var(--accent-blue);">⚖️ Check Plot Integrity</button>
+                        <button id="plot-integrity-btn" class="btn-secondary" style="width: 100%; margin-bottom: 10px; border-color: var(--accent-blue); color: var(--accent-blue);" title="Perform a deep scan for plot holes and logical errors">⚖️ Check Plot Integrity</button>
                         <div style="display: flex; flex-direction: column; gap: 10px;">
                             <textarea id="chat-input" placeholder="Ask a question or research topic..." style="width: 100%; height: 60px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: white; border-radius: 8px; padding: 10px; outline: none; resize: none;"></textarea>
-                            <button id="send-chat" class="btn-primary" style="width: 100%;">💬 Ask AI</button>
+                            <button id="send-chat" class="btn-primary" style="width: 100%;" title="Send a message to your AI writing companion">💬 Ask AI</button>
                             <label style="font-size: 0.7rem; color: var(--text-secondary); display: flex; align-items: center; gap: 5px;">
                                 <input type="checkbox" id="ai-search-web"> Allow Web Search (Deep Research)
                             </label>
@@ -208,7 +212,10 @@
                         <div id="sub-timeline" class="world-sub-view hidden">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                                 <h4 style="margin: 0;">Timeline</h4>
-                                <button class="btn-tool" id="add-event-sw" onclick="createObject('timeline')" title="Add Event">➕</button>
+                                <div style="display: flex; gap: 5px;">
+                                    <button class="btn-tool" onclick="aiSyncTimelineFromDraft()" title="Automatically extract timeline events from your current manuscript">🔄 Sync from Text</button>
+                                    <button class="btn-tool" id="add-event-sw" onclick="createObject('timeline')" title="Manually add a timeline event">➕</button>
+                                </div>
                             </div>
                             <div id="timeline-list"></div>
                         </div>
@@ -252,6 +259,14 @@
             <h2>Settings</h2>
             <div class="edit-form">
                 <div class="setting-group">
+                    <label>Project Language</label>
+                    <select id="project-language">
+                        <option value="en-US">American English (en-US)</option>
+                        <option value="en-GB">British English (en-GB)</option>
+                        <option value="de-DE">German (Deutsch)</option>
+                    </select>
+                </div>
+                <div class="setting-group">
                     <label>AI Provider</label>
                     <select id="ai-provider">
                         <option value="gemini">Google Gemini (Cloud/Free)</option>
@@ -273,7 +288,7 @@
                     </div>
                     <input type="text" id="ollama-model" placeholder="Or type manually..." style="margin-top: 10px;">
                     <small>Ensure Ollama is running at <code>127.0.0.1:11434</code></small>
-                    <button class="btn-secondary" id="test-ollama" style="width: 100%; margin-top: 10px;">⚡ Test Connection</button>
+                    <button class="btn-secondary" id="test-ollama" style="width: 100%; margin-top: 10px;" title="Verify if the local Ollama service is reachable">⚡ Test Connection</button>
                     
                     <details style="margin-top: 15px; font-size: 0.8rem; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px;">
                         <summary style="cursor: pointer; color: var(--accent-blue);">🔧 Ollama Troubleshooting (Click if failing)</summary>
@@ -293,8 +308,8 @@
                         No active database. Using local JSON files.
                     </div>
                     <div style="display: flex; gap: 10px;">
-                        <button class="btn-secondary" id="select-db-btn" style="flex: 1">📂 Link Existing DB</button>
-                        <button class="btn-primary" id="create-db-btn" style="flex: 1">➕ Create New DB</button>
+                        <button class="btn-secondary" id="select-db-btn" style="flex: 1" title="Select an existing SQLite .db file to use as storage">📂 Link Existing DB</button>
+                        <button class="btn-primary" id="create-db-btn" style="flex: 1" title="Create and initialize a new SQLite database file">➕ Create New DB</button>
                     </div>
                     <small style="display: block; margin-top: 8px; opacity: 0.6;">SQLite is more robust for large projects and prevents data loss. All changes are synced to this file.</small>
                 </div>
@@ -305,14 +320,14 @@
                         No active project file. Using browser storage.
                     </div>
                     <div style="display: flex; gap: 10px;">
-                        <button class="btn-secondary" id="select-project-btn" style="flex:1">📂 Open Project</button>
-                        <button class="btn-primary" id="new-project-btn" style="flex:1">➕ New Project</button>
+                        <button class="btn-secondary" id="select-project-btn" style="flex:1" title="Load an existing .ink project file">📂 Open Project</button>
+                        <button class="btn-primary" id="new-project-btn" style="flex:1" title="Create a fresh .ink project file">➕ New Project</button>
                     </div>
                     <small style="display: block; margin-top: 8px; opacity: 0.6;">Switching projects or DBs will reload all data.</small>
                 </div>
             </div>
 
-            <button class="btn-primary" onclick="saveSettings()" style="width: 100%; margin-top: 20px;">Save & Close</button>
+            <button class="btn-primary" onclick="saveSettings()" style="width: 100%; margin-top: 20px;" title="Apply changes and return to the editor">Save & Close</button>
         </div>
     </div>
 
@@ -325,9 +340,9 @@
             </div>
             
             <div class="picker-path" style="padding: 10px; background: rgba(0,0,0,0.3); font-family: monospace; font-size: 0.8rem; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 10px;">
-                <button class="btn-secondary" id="picker-up-btn" style="padding: 2px 8px;">↑ Up</button>
-                <button class="btn-secondary" id="picker-home-btn" style="padding: 2px 8px;">🏠 Home</button>
-                <button class="btn-secondary" id="picker-drives-btn" style="padding: 2px 8px;">💻 Computer</button>
+                <button class="btn-secondary" id="picker-up-btn" style="padding: 2px 8px;" title="Go to parent directory">↑ Up</button>
+                <button class="btn-secondary" id="picker-home-btn" style="padding: 2px 8px;" title="Go to user's home folder">🏠 Home</button>
+                <button class="btn-secondary" id="picker-drives-btn" style="padding: 2px 8px;" title="Show available system drives">💻 Computer</button>
                 <div id="current-picker-path" style="flex-grow: 1; word-break: break-all;">C:\...</div>
             </div>
 
@@ -340,8 +355,8 @@
                     <input type="text" id="picker-filename" placeholder="filename.db" style="width: 100%; background: rgba(0,0,0,0.5); border: 1px solid var(--border-color); color: white; padding: 8px; border-radius: 4px;">
                 </div>
                 <div style="display: flex; gap: 10px;">
-                    <button class="btn-secondary" onclick="closeFilePicker()" style="flex: 1">Cancel</button>
-                    <button class="btn-primary" onclick="confirmPickerSelection()" style="flex: 1">Confirm</button>
+                    <button class="btn-secondary" onclick="closeFilePicker()" style="flex: 1" title="Close the file picker without selecting">Cancel</button>
+                    <button class="btn-primary" onclick="confirmPickerSelection()" style="flex: 1" title="Select the current file or folder">Confirm</button>
                 </div>
             </div>
         </div>
@@ -353,8 +368,8 @@
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                 <h2 id="edit-modal-title">Edit Item</h2>
                 <div style="display: flex; gap: 10px;">
-                    <button class="btn-secondary" id="merge-btn" style="background: var(--accent-color); color: white;">🔗 Merge</button>
-                    <button class="btn-secondary" id="delete-btn" style="background: #ef4444; color: white;">🗑️ Delete</button>
+                    <button class="btn-secondary" id="merge-btn" style="background: var(--accent-color); color: white;" title="Combine this item with another existing entry">🔗 Merge</button>
+                    <button class="btn-secondary" id="delete-btn" style="background: #ef4444; color: white;" title="Permanently remove this item from the project">🗑️ Delete</button>
                 </div>
             </div>
             
@@ -429,8 +444,8 @@
             </div>
 
             <div style="display: flex; gap: 10px; margin-top: 30px;">
-                <button class="btn-primary" onclick="saveEdit()" style="flex-grow: 1;">Save Changes</button>
-                <button class="btn-secondary" onclick="closeEditModal()">Cancel</button>
+                <button class="btn-primary" onclick="saveEdit()" style="flex-grow: 1;" title="Save modifications to this item">Save Changes</button>
+                <button class="btn-secondary" onclick="closeEditModal()" title="Discard changes and close">Cancel</button>
             </div>
         </div>
     </div>
@@ -447,8 +462,8 @@
                 </select>
             </div>
             <div style="display: flex; gap: 10px; margin-top: 20px;">
-                <button class="btn-primary" onclick="confirmMerge()">Confirm Merge</button>
-                <button class="btn-secondary" onclick="closeMergeModal()">Cancel</button>
+                <button class="btn-primary" onclick="confirmMerge()" title="Perform the merge operation">Confirm Merge</button>
+                <button class="btn-secondary" onclick="closeMergeModal()" title="Cancel merge">Cancel</button>
             </div>
         </div>
     </div>
